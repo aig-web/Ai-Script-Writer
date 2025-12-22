@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import axios from "axios";
-import { Save, Database, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
+import { Save, Database, ArrowLeft, CheckCircle2, AlertCircle, Zap } from "lucide-react";
 import Link from "next/link";
 
 export default function TrainPage() {
@@ -54,49 +54,95 @@ export default function TrainPage() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans p-6 lg:p-10">
-      <div className="max-w-3xl mx-auto">
+  const getButtonStyle = () => {
+    const baseStyle = {
+      width: "100%",
+      padding: "16px",
+      borderRadius: "12px",
+      fontSize: "14px",
+      fontWeight: "700" as const,
+      color: "#ffffff",
+      border: "none",
+      cursor: isTraining ? "not-allowed" : "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: "8px",
+      transition: "all 0.2s"
+    };
 
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <Link href="/" className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-600">
-            <ArrowLeft size={24} />
-          </Link>
-          <h1 className="text-2xl font-bold flex items-center gap-2 text-slate-900">
-            <div className="h-8 w-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
-               <Database size={18} />
-            </div>
-            Train Knowledge Base
-          </h1>
+    if (status === "Success") {
+      return { ...baseStyle, backgroundColor: "#16a34a", boxShadow: "0 4px 12px rgba(22, 163, 74, 0.3)" };
+    } else if (status === "Error") {
+      return { ...baseStyle, backgroundColor: "#dc2626", boxShadow: "0 4px 12px rgba(220, 38, 38, 0.3)" };
+    } else {
+      return { ...baseStyle, backgroundColor: isTraining ? "#94a3b8" : "#4f46e5", boxShadow: isTraining ? "none" : "0 4px 12px rgba(79, 70, 229, 0.3)" };
+    }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", backgroundColor: "#f1f5f9", fontFamily: "system-ui, sans-serif" }}>
+
+      {/* HEADER */}
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 24px", backgroundColor: "#ffffff", borderBottom: "1px solid #e2e8f0" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ height: "40px", width: "40px", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", color: "#ffffff", boxShadow: "0 4px 12px rgba(99, 102, 241, 0.3)" }}>
+            <Zap size={22} fill="currentColor" />
+          </div>
+          <div>
+            <h1 style={{ fontSize: "20px", fontWeight: "700", color: "#0f172a", lineHeight: "1.2" }}>
+              ScriptAI <span style={{ color: "#94a3b8", fontWeight: "400" }}>Studio</span>
+            </h1>
+            <p style={{ fontSize: "10px", fontWeight: "600", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em" }}>Viral Engine v1.0</p>
+          </div>
+        </div>
+
+        <Link href="/" style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", fontSize: "14px", fontWeight: "600", color: "#475569", textDecoration: "none", borderRadius: "8px", backgroundColor: "#f8fafc", border: "1px solid #e2e8f0" }}>
+          <ArrowLeft size={16} />
+          Back to Studio
+        </Link>
+      </header>
+
+      {/* MAIN CONTENT */}
+      <div style={{ padding: "32px 24px", maxWidth: "800px", margin: "0 auto" }}>
+
+        {/* Page Title */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px" }}>
+          <div style={{ height: "48px", width: "48px", backgroundColor: "#4f46e5", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", color: "#ffffff" }}>
+            <Database size={24} />
+          </div>
+          <div>
+            <h2 style={{ fontSize: "24px", fontWeight: "700", color: "#0f172a" }}>Train Knowledge Base</h2>
+            <p style={{ fontSize: "14px", color: "#64748b" }}>Add successful scripts to improve AI output</p>
+          </div>
         </div>
 
         {/* Form Card */}
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
+        <div style={{ backgroundColor: "#ffffff", padding: "32px", borderRadius: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", border: "1px solid #e2e8f0" }}>
 
           {/* Metadata Row */}
-          <div className="grid grid-cols-2 gap-6">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "24px" }}>
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                Script Mode (Strict)
+              <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px" }}>
+                Script Mode
               </label>
               <select
                 value={mode}
                 onChange={(e) => setMode(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-xl p-3 font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                style={{ width: "100%", backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "12px", fontSize: "14px", fontWeight: "600", color: "#0f172a", outline: "none", cursor: "pointer" }}
               >
                 <option value="informational">Informational (Story)</option>
                 <option value="listical">Listical (Numbered)</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+              <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px" }}>
                 Hook Type
               </label>
               <select
                 value={hookType}
                 onChange={(e) => setHookType(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-xl p-3 font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                style={{ width: "100%", backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "12px", fontSize: "14px", fontWeight: "600", color: "#0f172a", outline: "none", cursor: "pointer" }}
               >
                 <option value="shock">Shock</option>
                 <option value="question">Question</option>
@@ -106,28 +152,29 @@ export default function TrainPage() {
             </div>
           </div>
 
-          {/* Inputs */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+          {/* Title Input */}
+          <div style={{ marginBottom: "24px" }}>
+            <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px" }}>
               Title (Internal Reference)
             </label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Jio 5G Strategy"
-              className="w-full bg-white border border-slate-200 rounded-xl p-3 font-medium text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-slate-400 transition-all"
+              style={{ width: "100%", backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "12px", fontSize: "14px", fontWeight: "600", color: "#0f172a", outline: "none" }}
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+          {/* Script Content */}
+          <div style={{ marginBottom: "24px" }}>
+            <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px" }}>
               Full Script (Hook + Body)
             </label>
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="Paste the full successful script here..."
-              className="w-full h-64 bg-white border border-slate-200 rounded-xl p-3 font-mono text-sm leading-relaxed text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 resize-none placeholder:text-slate-400 transition-all"
+              style={{ width: "100%", height: "280px", backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "12px", fontSize: "13px", fontFamily: "ui-monospace, monospace", lineHeight: "1.7", color: "#475569", outline: "none", resize: "none" }}
             />
           </div>
 
@@ -135,22 +182,18 @@ export default function TrainPage() {
           <button
             onClick={handleTrain}
             disabled={isTraining}
-            className={`w-full py-4 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all shadow-md ${
-              status === "Success" ? "bg-green-600 hover:bg-green-700" :
-              status === "Error" ? "bg-red-600 hover:bg-red-700" :
-              "bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg"
-            }`}
+            style={getButtonStyle()}
           >
             {isTraining ? "Processing..." :
-             status === "Success" ? <><CheckCircle2 size={20}/> Saved!</> :
-             status === "Error" ? <><AlertCircle size={20}/> Failed</> :
+             status === "Success" ? <><CheckCircle2 size={20}/> Saved to Knowledge Base!</> :
+             status === "Error" ? <><AlertCircle size={20}/> Training Failed</> :
              <><Save size={20}/> Train Model</>
             }
           </button>
 
           {/* Debug Output */}
           {debugInfo && (
-            <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs font-mono text-slate-600 break-all">
+            <div style={{ marginTop: "16px", padding: "12px", backgroundColor: status === "Success" ? "#f0fdf4" : "#fef2f2", borderRadius: "12px", border: `1px solid ${status === "Success" ? "#bbf7d0" : "#fecaca"}`, fontSize: "12px", fontFamily: "ui-monospace, monospace", color: status === "Success" ? "#166534" : "#991b1b", wordBreak: "break-all" }}>
               {debugInfo}
             </div>
           )}

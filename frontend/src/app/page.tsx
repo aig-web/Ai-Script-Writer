@@ -2,50 +2,31 @@
 
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
-import {
-  Send, BookOpen, Layers,
-  FileText, Copy, Zap,
-  File, X, CheckCircle
-} from "lucide-react";
+import { Send, BookOpen, Layers, FileText, Copy, Zap, FileUp, X } from "lucide-react";
 import Link from "next/link";
 
-interface HookRanking {
-  ranking: number[];
-  best: number;
-}
-
-interface ResultData {
-  draft: string;
-  optimized: string;
-}
-
 export default function StudioPage() {
-  // --- STATE ---
   const [topic, setTopic] = useState("");
   const [notes, setNotes] = useState("");
   const [mode, setMode] = useState("informational");
   const [files, setFiles] = useState<File[]>([]);
-  const [skipResearch, setSkipResearch] = useState(false);
+  const [useOnlyMyContent, setUseOnlyMyContent] = useState(false);
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [status, setStatus] = useState("Ready");
 
-  // Outputs
   const [researchData, setResearchData] = useState<string[]>([]);
   const [finalScript, setFinalScript] = useState("");
-  const [optimizedScript, setOptimizedScript] = useState("");
-  const [hookRanking, setHookRanking] = useState<HookRanking | null>(null);
 
-  // Refs for auto-scroll
   const researchEndRef = useRef<HTMLDivElement>(null);
-
-  // --- HANDLERS ---
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
       setFiles(prev => [...prev, ...newFiles]);
     }
+    // Reset input so same file can be added again if removed
+    e.target.value = "";
   };
 
   const removeFile = (index: number) => {
@@ -57,20 +38,19 @@ export default function StudioPage() {
 
     setIsGenerating(true);
     setFinalScript("");
-    setOptimizedScript("");
     setResearchData([]);
-    setStatus("Agent Starting...");
+    setStatus("Initializing...");
 
     const formData = new FormData();
     formData.append("topic", topic);
     formData.append("user_notes", notes);
     formData.append("mode", mode);
+    formData.append("skip_research", useOnlyMyContent.toString());
 
-    for (const file of files) {
+    // Append all files
+    files.forEach((file) => {
       formData.append("files", file);
-    }
-
-    formData.append("skip_research", skipResearch.toString());
+    });
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -103,16 +83,14 @@ export default function StudioPage() {
                 const merged = [...prev, ...newBullets];
                 return Array.from(new Set(merged));
               });
-            } else if (json.type === "hook_ranking") {
-              setHookRanking(json.data);
             } else if (json.type === "result") {
+              // Handle both old format (string) and new format (object with draft/optimized)
               if (typeof json.data === "string") {
                 setFinalScript(json.data);
-                setOptimizedScript(json.data);
-              } else {
-                const result = json.data as ResultData;
-                setFinalScript(result.draft);
-                setOptimizedScript(result.optimized);
+              } else if (json.data?.optimized) {
+                setFinalScript(json.data.optimized);
+              } else if (json.data?.draft) {
+                setFinalScript(json.data.draft);
               }
             } else if (json.type === "error") {
               alert("Error: " + json.message);
@@ -128,181 +106,182 @@ export default function StudioPage() {
       setStatus("Connection Failed");
     } finally {
       setIsGenerating(false);
-      setStatus("Complete!");
     }
   };
 
-  // Auto-scroll research
   useEffect(() => {
     researchEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [researchData]);
 
-  const displayScript = optimizedScript || finalScript;
-
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column", backgroundColor: "#f1f5f9", fontFamily: "system-ui, sans-serif", overflow: "hidden" }}>
 
-      {/* --- HEADER --- */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white">
-              <Zap size={22} fill="currentColor" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">
-                ScriptAI <span className="text-slate-400">Studio</span>
-              </h1>
-            </div>
+      {/* HEADER */}
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 24px", backgroundColor: "#ffffff", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ height: "40px", width: "40px", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", color: "#ffffff", boxShadow: "0 4px 12px rgba(99, 102, 241, 0.3)" }}>
+            <Zap size={22} fill="currentColor" />
           </div>
+          <div>
+            <h1 style={{ fontSize: "20px", fontWeight: "700", color: "#0f172a", lineHeight: "1.2" }}>
+              ScriptAI <span style={{ color: "#94a3b8", fontWeight: "400" }}>Studio</span>
+            </h1>
+            <p style={{ fontSize: "10px", fontWeight: "600", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em" }}>Viral Engine v1.0</p>
+          </div>
+        </div>
 
-          <div className="flex items-center gap-4">
-            <Link href="/train" className="text-sm font-medium text-slate-600 hover:text-indigo-600 px-4 py-2 hover:bg-slate-50 rounded-lg transition-colors">
-              Train Brain
-            </Link>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <Link href="/train" style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", fontSize: "14px", fontWeight: "600", color: "#475569", textDecoration: "none", borderRadius: "8px" }}>
+            <BookOpen size={16} />
+            Train Brain
+          </Link>
 
-            <div className={`px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 ${
-              isGenerating
-                ? "bg-indigo-100 text-indigo-700"
-                : status === "Complete!"
-                  ? "bg-green-100 text-green-700"
-                  : "bg-slate-100 text-slate-600"
-            }`}>
-              {isGenerating && <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"/>}
-              {status === "Complete!" && <CheckCircle size={14} />}
-              {isGenerating ? `AGENT STARTING (${mode.toUpperCase()})...` : status}
-            </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 16px", borderRadius: "20px", border: "1px solid #e2e8f0", fontSize: "12px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em", backgroundColor: isGenerating ? "#eef2ff" : "#ffffff", color: isGenerating ? "#4f46e5" : "#64748b" }}>
+            {isGenerating && <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#4f46e5", animation: "pulse 1.5s infinite" }}></span>}
+            {status}
           </div>
         </div>
       </header>
 
-      {/* --- MAIN CONTENT --- */}
-      <main className="max-w-7xl mx-auto p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* MAIN GRID */}
+      <div style={{ flex: 1, padding: "24px", minHeight: 0, backgroundColor: "#f1f5f9" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.3fr 1.7fr", gap: "24px", height: "100%" }}>
 
-          {/* 1. INPUT PANEL (3 Cols) */}
-          <div className="lg:col-span-3 space-y-4">
+          {/* COLUMN 1: INPUTS */}
+          <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+            <div style={{ backgroundColor: "#ffffff", padding: "24px", borderRadius: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", border: "1px solid #e2e8f0", height: "100%", display: "flex", flexDirection: "column", overflowY: "auto" }}>
 
-            {/* Topic Input */}
-            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <label style={{ fontSize: "11px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px" }}>Topic</label>
               <input
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
-                placeholder="PopEVE is an AI that learned"
-                className="w-full text-slate-900 font-medium placeholder:text-slate-400 outline-none"
+                placeholder="e.g. The Dark Side of AI"
+                style={{ width: "100%", boxSizing: "border-box", backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "12px", fontSize: "14px", fontWeight: "500", color: "#0f172a", marginBottom: "24px", outline: "none", fontFamily: "inherit" }}
               />
-            </div>
 
-            {/* Mode Selector */}
-            <div className="bg-white rounded-xl border border-slate-200 p-4">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 block">Mode</label>
-              <div className="grid grid-cols-2 gap-2">
+              <label style={{ fontSize: "11px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px" }}>Mode</label>
+              <div style={{ display: "flex", gap: "8px", marginBottom: "20px" }}>
                 <button
                   onClick={() => setMode("informational")}
-                  className={`p-3 rounded-lg text-sm font-semibold transition-all ${
-                    mode === "informational"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
+                  style={{ padding: "10px 24px", borderRadius: "20px", fontSize: "13px", fontWeight: "600", border: mode === "informational" ? "none" : "1px solid #e2e8f0", backgroundColor: mode === "informational" ? "#4f46e5" : "#ffffff", color: mode === "informational" ? "#ffffff" : "#64748b", cursor: "pointer", transition: "all 0.2s" }}
                 >
                   Informational
                 </button>
                 <button
                   onClick={() => setMode("listical")}
-                  className={`p-3 rounded-lg text-sm font-semibold transition-all ${
-                    mode === "listical"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
+                  style={{ padding: "10px 24px", borderRadius: "20px", fontSize: "13px", fontWeight: "600", border: mode === "listical" ? "none" : "1px solid #e2e8f0", backgroundColor: mode === "listical" ? "#4f46e5" : "#ffffff", color: mode === "listical" ? "#ffffff" : "#64748b", cursor: "pointer", transition: "all 0.2s" }}
                 >
                   Listical
                 </button>
               </div>
-            </div>
 
-            {/* Source File */}
-            <div className="bg-white rounded-xl border border-slate-200 p-4">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 block">Source File (Optional)</label>
-              <label className="flex items-center gap-3 p-3 rounded-lg border border-dashed border-slate-300 cursor-pointer hover:border-indigo-400 hover:bg-slate-50 transition-all">
-                <File size={18} className="text-slate-400" />
-                <span className="text-sm text-slate-500">Choose PDF...</span>
-                <input type="file" accept=".pdf,.txt,.md" multiple onChange={handleFileChange} className="hidden" />
-              </label>
+              {/* Use Only My Content Toggle */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                <div>
+                  <p style={{ fontSize: "14px", fontWeight: "600", color: "#334155" }}>Use Only My Content</p>
+                  <p style={{ fontSize: "12px", color: "#94a3b8" }}>Skip web research</p>
+                </div>
+                <button
+                  onClick={() => setUseOnlyMyContent(!useOnlyMyContent)}
+                  style={{
+                    width: "48px",
+                    height: "26px",
+                    borderRadius: "13px",
+                    border: "none",
+                    backgroundColor: useOnlyMyContent ? "#4f46e5" : "#d1d5db",
+                    cursor: "pointer",
+                    position: "relative",
+                    transition: "background-color 0.2s"
+                  }}
+                >
+                  <span style={{
+                    position: "absolute",
+                    top: "2px",
+                    left: useOnlyMyContent ? "24px" : "2px",
+                    width: "22px",
+                    height: "22px",
+                    borderRadius: "50%",
+                    backgroundColor: "#ffffff",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                    transition: "left 0.2s"
+                  }}></span>
+                </button>
+              </div>
+
+              {/* Source Files - Multiple */}
+              <label style={{ fontSize: "11px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px" }}>Source Files (Multiple OK)</label>
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", width: "100%", padding: "16px", borderRadius: "12px", border: "2px dashed #e2e8f0", backgroundColor: "#ffffff", color: "#94a3b8", cursor: "pointer", transition: "all 0.2s" }}>
+                  <FileUp size={18} />
+                  <span style={{ fontSize: "12px", fontWeight: "700" }}>Add PDF or TXT files...</span>
+                  <input type="file" onChange={handleFileChange} style={{ display: "none" }} accept=".pdf,.txt,.md" multiple />
+                </label>
+              </div>
 
               {/* File List */}
               {files.length > 0 && (
-                <div className="mt-3 space-y-2">
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }}>
                   {files.map((file, index) => (
-                    <div key={index} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <FileText size={16} className="text-indigo-600 flex-shrink-0" />
-                        <span className="text-sm text-slate-700 truncate">{file.name}</span>
+                    <div key={index} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", backgroundColor: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: "10px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <FileText size={16} style={{ color: "#4f46e5" }} />
+                        <span style={{ fontSize: "12px", fontWeight: "600", color: "#4f46e5", maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</span>
                       </div>
                       <button
                         onClick={() => removeFile(index)}
-                        className="p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-red-500 transition-colors"
+                        style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", display: "flex", alignItems: "center", justifyContent: "center" }}
                       >
-                        <X size={14} />
+                        <X size={16} style={{ color: "#64748b" }} />
                       </button>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
 
-            {/* Context / Notes */}
-            <div className="bg-white rounded-xl border border-slate-200 p-4">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 block">Context / Notes</label>
+              <label style={{ fontSize: "11px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px" }}>Context / Notes</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Specific angles or requirements..."
-                className="w-full h-32 text-sm text-slate-700 placeholder:text-slate-400 outline-none resize-none"
+                placeholder="Specific angles, keywords to include..."
+                style={{ width: "100%", boxSizing: "border-box", backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "14px", fontSize: "14px", color: "#334155", flex: 1, minHeight: "120px", marginBottom: "16px", outline: "none", resize: "none", fontFamily: "inherit", lineHeight: "1.5" }}
               />
-            </div>
 
-            {/* Generate Button */}
-            <button
-              onClick={handleGenerate}
-              disabled={isGenerating}
-              className={`w-full py-4 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-all ${
-                isGenerating
-                  ? "bg-slate-400 cursor-not-allowed"
-                  : "bg-indigo-600 hover:bg-indigo-700"
-              }`}
-            >
-              {isGenerating ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <><Send size={18} /> Generate Script</>
-              )}
-            </button>
+              <div style={{ marginTop: "auto", paddingTop: "16px" }}>
+                <button
+                  onClick={handleGenerate}
+                  disabled={isGenerating}
+                  style={{ width: "100%", padding: "16px", borderRadius: "12px", fontSize: "14px", fontWeight: "700", color: "#ffffff", backgroundColor: isGenerating ? "#94a3b8" : "#4f46e5", border: "none", cursor: isGenerating ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", boxShadow: isGenerating ? "none" : "0 4px 12px rgba(79, 70, 229, 0.3)", transition: "all 0.2s" }}
+                >
+                  {isGenerating ? "Generating..." : <><Send size={18} /> Generate Script</>}
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* 2. RESEARCH PANEL (4 Cols) */}
-          <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200 flex flex-col min-h-[600px]">
-            <div className="p-4 border-b border-slate-200 flex items-center gap-2">
-              <Layers size={18} className="text-indigo-600" />
-              <span className="font-semibold text-slate-700">Research</span>
+          {/* COLUMN 2: RESEARCH */}
+          <div style={{ display: "flex", flexDirection: "column", backgroundColor: "#ffffff", borderRadius: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", border: "1px solid #e2e8f0", overflow: "hidden", height: "100%" }}>
+            <div style={{ padding: "16px", borderBottom: "1px solid #f1f5f9", backgroundColor: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Layers size={18} style={{ color: "#6366f1" }} />
+                <span style={{ fontSize: "14px", fontWeight: "700", color: "#334155" }}>Research Agent</span>
+              </div>
+              <span style={{ fontSize: "12px", fontWeight: "700", backgroundColor: "#eef2ff", color: "#4f46e5", padding: "4px 10px", borderRadius: "6px" }}>{researchData.length} Facts</span>
             </div>
 
-            <div className="flex-1 p-4 overflow-y-auto">
+            <div style={{ flex: 1, padding: "16px", overflowY: "auto", backgroundColor: "#fafbfc" }}>
               {researchData.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                  <FileText size={32} className="text-slate-300 mb-2" />
-                  <p className="text-sm">Facts will appear here...</p>
+                <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#cbd5e1", gap: "12px" }}>
+                  <div style={{ padding: "16px", backgroundColor: "#f1f5f9", borderRadius: "50%" }}>
+                    <FileText size={24} />
+                  </div>
+                  <p style={{ fontSize: "14px", fontWeight: "500" }}>Research will stream here...</p>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                   {researchData.map((fact, i) => (
-                    <div
-                      key={i}
-                      className="p-3 bg-slate-50 rounded-lg text-sm text-slate-700 leading-relaxed"
-                    >
-                      {fact.replace(/^[-•]\s*/, "")}
+                    <div key={i} style={{ padding: "12px", backgroundColor: "#ffffff", border: "1px solid #f1f5f9", borderRadius: "12px", fontSize: "12px", color: "#475569", lineHeight: "1.6", boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
+                      <span style={{ color: "#6366f1", fontWeight: "700", marginRight: "8px" }}>•</span>
+                      {fact.replace(/^- /, "")}
                     </div>
                   ))}
                   <div ref={researchEndRef} />
@@ -311,37 +290,39 @@ export default function StudioPage() {
             </div>
           </div>
 
-          {/* 3. SCRIPT OUTPUT PANEL (5 Cols) */}
-          <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200 flex flex-col min-h-[600px]">
-            <div className="p-4 border-b border-slate-200 flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <FileText size={18} className="text-indigo-600" />
-                <span className="font-semibold text-slate-700">Script Output</span>
+          {/* COLUMN 3: OUTPUT */}
+          <div style={{ display: "flex", flexDirection: "column", backgroundColor: "#ffffff", borderRadius: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", border: "1px solid #e2e8f0", overflow: "hidden", height: "100%" }}>
+            <div style={{ padding: "16px", borderBottom: "1px solid #f1f5f9", backgroundColor: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <FileText size={18} style={{ color: "#6366f1" }} />
+                <span style={{ fontSize: "14px", fontWeight: "700", color: "#334155" }}>Final Script</span>
               </div>
               <button
-                onClick={() => navigator.clipboard.writeText(displayScript)}
-                className="text-sm text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
+                onClick={() => navigator.clipboard.writeText(finalScript)}
+                style={{ display: "flex", alignItems: "center", gap: "4px", padding: "6px 12px", fontSize: "12px", fontWeight: "700", color: "#4f46e5", backgroundColor: "transparent", border: "none", borderRadius: "8px", cursor: "pointer" }}
               >
                 <Copy size={14} /> Copy
               </button>
             </div>
 
-            <div className="flex-1 p-4 overflow-y-auto">
-              {displayScript ? (
-                <div className="prose prose-sm max-w-none text-slate-700">
-                  <ReactMarkdown>{displayScript}</ReactMarkdown>
+            <div style={{ flex: 1, overflowY: "auto", padding: "32px", backgroundColor: "#ffffff" }}>
+              {finalScript ? (
+                <div className="prose prose-sm" style={{ maxWidth: "none", color: "#475569", lineHeight: "1.8" }}>
+                  <ReactMarkdown>{finalScript}</ReactMarkdown>
                 </div>
               ) : (
-                <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                  <FileText size={32} className="text-slate-300 mb-2" />
-                  <p className="text-sm">Your script will appear here...</p>
+                <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#cbd5e1", gap: "12px" }}>
+                  <div style={{ padding: "16px", backgroundColor: "#f1f5f9", borderRadius: "50%" }}>
+                    <Zap size={24} />
+                  </div>
+                  <p style={{ fontSize: "14px", fontWeight: "500" }}>Ready to write viral scripts.</p>
                 </div>
               )}
             </div>
           </div>
 
         </div>
-      </main>
+      </div>
     </div>
   );
 }

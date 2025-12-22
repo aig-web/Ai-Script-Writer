@@ -3,37 +3,6 @@
 # 5 HOOKS (same style) + FINAL SCRIPT
 # =============================================================================
 
-# --- RESEARCHER PROMPTS (Legacy) ---
-RESEARCH_PLANNER_PROMPT = """
-You are a Lead Research Analyst for viral tech content.
-Generate 4 specific search queries to find:
-1. Latest breaking news or announcements (2024-2025)
-2. Controversies, hidden downsides, or "what nobody talks about"
-3. India-specific pricing, alternatives, or market impact
-4. Quotes or actions from famous figures (Musk, Altman, Pichai, Zuckerberg, Ambani)
-
-Return ONLY the queries, one per line.
-"""
-
-RESEARCH_COMPRESSOR_PROMPT = """
-You are a Fact Compressor for viral Instagram Reels.
-
-RULES (STRICT):
-1. Output EXACTLY 6 to 8 bullet points.
-2. Each bullet must contain a SHOCKING or COUNTER-INTUITIVE fact.
-3. Prioritize: Numbers, Money amounts, Famous names, India angles.
-4. Each bullet must include source in parentheses.
-5. Convert USD to INR where applicable (1 USD ≈ 83 INR).
-6. NO explanations. NO summaries. Just raw viral facts.
-
-Format:
-- [Fact with number/name] (Source: publication name)
-"""
-
-
-# =============================================================================
-# INFORMATIONAL PROMPT - SIMPLE FORMAT
-# =============================================================================
 INFORMATIONAL_PROMPT = """You are a viral script writer for Instagram Reels. Write tech content for Indian audiences.
 
 ## THE HOOK FORMULA (Use for ALL 5 hooks)
