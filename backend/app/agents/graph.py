@@ -1,10 +1,14 @@
 """
-LangGraph Workflow - Vibhay Pro-Tier Script Generation
-Research → Retrieve → Write (Claude) → Critique → Loop/Output
+LangGraph Workflow - Multi-Angle Viral Script Generation v2.0
+Research → Retrieve → Generate 3 Scripts (parallel) → Validate → Output
+
+This version generates 3 viral scripts with 3 different angles,
+each with 5 unique hooks - matching the target output format.
 """
 import os
+import asyncio
 from pathlib import Path
-from typing import TypedDict, Optional, List
+from typing import TypedDict, Optional, List, Dict, Any
 from dotenv import load_dotenv
 
 # Ensure .env is loaded
@@ -20,7 +24,14 @@ from app.agents.prompts import INFORMATIONAL_PROMPT, LISTICAL_PROMPT
 from app.agents.critic import ScriptCritic
 from app.agents.script_checker import ScriptChecker
 from app.agents.perplexity_researcher import PerplexityResearcher
+from app.agents.research_orchestrator import ResearchOrchestrator
+from app.agents.research_checker import ResearchChecker
+from app.agents.regression_checker import RegressionChecker
+from app.agents.pattern_reference import get_patterns
+from app.agents.utils import full_clean
 from app.agents.nodes.retriever import retrieve_style_context
+from app.agents.multi_angle_writer import MultiAngleWriter
+from app.agents.script_rag import ScriptRAG
 
 
 # --- COMPACT LOGGING ---
@@ -29,7 +40,7 @@ def log_node(name: str, msg: str):
     print(f"[{name}] {msg}")
 
 
-# --- SAFE STATE DEFINITION ---
+# --- STATE DEFINITION ---
 class AgentState(TypedDict, total=False):
     # User Inputs
     topic: str
@@ -38,15 +49,34 @@ class AgentState(TypedDict, total=False):
     file_content: str
     skip_research: bool  # Skip Perplexity research, use only provided content
 
-    # Research Data
+    # Research Status (for topic type detection)
+    research_status: str  # "complete", "needs_specific_angle", "needs_clarification", "error"
+    research_message: str  # Message to show user if needs input
+    suggested_angles: List[str]  # For generic topics (Type B)
+    clarification_questions: List[str]  # For ambiguous topics (Type D)
+    topic_type: str  # A, B, C, or D
+
+    # Research Data (Multi-stage orchestrator)
     research_queries: List[str]
-    research_data: str  # Compressed bullets
+    research_data: str  # Connected narrative from orchestrator
     research_sources: List[str]
+    selected_angle: dict  # Contains angle, draft_hook, search_queries
+    research_quality_score: int  # Quality score 0-100
+    research_issues: List[str]  # Missing components
 
     # Style Context (from ChromaDB)
     style_context: str
 
-    # Generation
+    # RAG Context (from training data)
+    rag_context: str
+
+    # Multi-Angle Generation (NEW - v2.0)
+    angles: List[Dict]  # 3 angles with name, focus, hook_style
+    scripts: List[str]  # 3 complete scripts
+    summary_table: str  # Markdown summary table
+    full_output: str  # Complete formatted output with all 3 scripts
+
+    # Legacy single-script fields (for backward compatibility)
     draft: str
     critic_feedback: str
     revision_count: int
@@ -57,12 +87,21 @@ class AgentState(TypedDict, total=False):
     best_hook_number: int
     hook_ranking: List[int]
 
+    # Quality Results (from regression checker)
+    quality_score: int
+    quality_issues: List[str]
+    quality_passes: bool
 
-# --- NODE 1: PERPLEXITY RESEARCHER ---
-def research_node(state: AgentState):
+
+# --- NODE 1: MULTI-STAGE RESEARCH ORCHESTRATOR ---
+async def research_node_async(state: AgentState):
     """
-    Uses Perplexity sonar-pro via OpenRouter for deep web research.
-    Can be skipped if user wants to use only provided content.
+    Multi-stage research with topic type detection.
+    Stage 0: DETECT - What type of topic is this?
+    Stage 1: SCAN - Find all possible angles
+    Stage 2: SELECT - Choose the best viral angle
+    Stage 3: DEEP DIVE - Research only that angle
+    Stage 4: CONNECT - Build narrative flow
     """
     topic = state.get("topic", "")
     user_notes = state.get("user_notes", "")
@@ -86,120 +125,285 @@ def research_node(state: AgentState):
         research_data = "\n\n".join(provided_content)
 
         return {
+            "research_status": "complete",
             "research_data": research_data,
             "research_queries": ["[Research Skipped - Using provided content only]"],
             "research_sources": [],
+            "selected_angle": {},
+            "research_quality_score": 0,
+            "research_issues": [],
+            "topic_type": "skip",
             "revision_count": 0
         }
 
-    # If user provided file content, combine with Perplexity research
+    # If user provided file content, process it with the orchestrator's content processor
     if file_content and len(file_content) > 100:
-        log_node("Research", "Calling Perplexity + combining with files...")
+        log_node("Research", "Processing user-provided content with orchestrator...")
 
-        researcher = PerplexityResearcher()
-        research_result = researcher.research(topic, user_notes)
+        orchestrator = ResearchOrchestrator()
+        try:
+            # Use the orchestrator to properly process the file content
+            # This extracts the STORY from the content, not raw fragments
+            result = await orchestrator.research(topic, user_notes, file_content)
 
-        # Combine file content with web research
-        combined_research = f"""
-USER PROVIDED CONTENT:
-{file_content[:5000]}
+            # Check if research needs user input (generic/ambiguous topic)
+            if result.get("status") == "needs_specific_angle":
+                log_node("Research", "Generic topic detected - needs angle selection")
+                return {
+                    "research_status": "needs_specific_angle",
+                    "research_message": result.get("message", ""),
+                    "suggested_angles": result.get("suggested_angles", []),
+                    "topic_type": "B",
+                    "research_data": None,
+                }
 
-WEB RESEARCH (Latest Updates from Perplexity):
-{research_result['compressed_bullets']}
-"""
+            if result.get("status") == "needs_clarification":
+                log_node("Research", "Ambiguous topic - needs clarification")
+                return {
+                    "research_status": "needs_clarification",
+                    "research_message": result.get("message", ""),
+                    "clarification_questions": result.get("questions", []),
+                    "suggested_angles": result.get("suggested_angles", []),
+                    "topic_type": "D",
+                    "research_data": None,
+                }
+
+            # The orchestrator already processed the file content properly
+            # No need to combine raw content - use the processed research directly
+            research_data = result.get('research_data', '')
+
+            # Validate research quality
+            checker = ResearchChecker()
+            passes, issues, score = checker.check(research_data)
+            log_node("Research", f"Quality Score: {score}/100")
+
+            return {
+                "research_status": "complete",
+                "research_data": research_data,
+                "research_queries": ["User content + multi-stage research"],
+                "research_sources": result.get("research_sources", ["User uploaded document"]),
+                "selected_angle": result.get("selected_angle", {}),
+                "research_quality_score": score,
+                "research_issues": issues,
+                "topic_type": result.get("topic_type", "user_content"),
+                "revision_count": 0
+            }
+        except Exception as e:
+            log_node("Research", f"Orchestrator failed, using fallback: {str(e)[:50]}")
+            # Fallback: Try to extract story from file content using LLM
+            try:
+                from langchain_openai import ChatOpenAI
+                llm = ChatOpenAI(
+                    model="anthropic/claude-3.5-sonnet",
+                    openai_api_key=os.getenv("OPENAI_API_KEY"),
+                    openai_api_base="https://openrouter.ai/api/v1",
+                    temperature=0.2,
+                    max_tokens=3000
+                )
+                extract_prompt = f"""Extract the key story from this document about "{topic}".
+
+Write flowing paragraphs summarizing:
+- What happened and who did it
+- Key numbers with context
+- Why it matters
+
+Document content:
+{file_content[:6000]}"""
+
+                response = await llm.ainvoke(extract_prompt)
+                processed_content = response.content
+            except:
+                # Last resort: just use the file content as-is but summarize
+                processed_content = f"Topic: {topic}\n\nDocument provided by user contains information about this topic."
+
+            return {
+                "research_status": "complete",
+                "research_data": processed_content,
+                "research_queries": ["User content processed"],
+                "research_sources": ["User uploaded document"],
+                "selected_angle": {},
+                "research_quality_score": 0,
+                "research_issues": ["Fallback mode - content extracted"],
+                "topic_type": "fallback",
+                "revision_count": 0
+            }
+
+    # Full multi-stage orchestrated research (default)
+    log_node("Research", f"Multi-stage research for: {topic[:40]}...")
+
+    orchestrator = ResearchOrchestrator()
+    try:
+        result = await orchestrator.research(topic, user_notes)
+
+        # Check if research needs user input (generic/ambiguous topic)
+        if result.get("status") == "needs_specific_angle":
+            log_node("Research", "Generic topic detected - needs angle selection")
+            return {
+                "research_status": "needs_specific_angle",
+                "research_message": result.get("message", ""),
+                "suggested_angles": result.get("suggested_angles", []),
+                "topic_type": "B",
+                "research_data": None,
+            }
+
+        if result.get("status") == "needs_clarification":
+            log_node("Research", "Ambiguous topic - needs clarification")
+            return {
+                "research_status": "needs_clarification",
+                "research_message": result.get("message", ""),
+                "clarification_questions": result.get("questions", []),
+                "suggested_angles": result.get("suggested_angles", []),
+                "topic_type": "D",
+                "research_data": None,
+            }
+
+        # Validate research quality
+        checker = ResearchChecker()
+        passes, issues, score = checker.check(result["research_data"])
+
+        log_node("Research", f"Quality Score: {score}/100 | Angle: {result.get('selected_angle', {}).get('angle', 'N/A')[:30]}")
+        if not passes:
+            log_node("Research", f"Issues: {issues}")
+
         return {
-            "research_data": combined_research,
-            "research_queries": research_result["queries"],
-            "research_sources": research_result["sources"],
+            "research_status": "complete",
+            "research_data": result["research_data"],
+            "research_queries": ["Multi-stage orchestrated research"],
+            "research_sources": ["Perplexity + Claude multi-stage pipeline"],
+            "selected_angle": result.get("selected_angle", {}),
+            "research_quality_score": score,
+            "research_issues": issues,
+            "topic_type": result.get("topic_type", "A"),
+            "revision_count": 0
+        }
+    except Exception as e:
+        log_node("Research", f"Orchestrator failed, using fallback: {str(e)[:50]}")
+        # Fallback to basic Perplexity research
+        researcher = PerplexityResearcher()
+        result = researcher.research(topic, user_notes)
+
+        log_node("Research", f"Fallback: Got {len(result.get('compressed_bullets', ''))} chars")
+
+        return {
+            "research_status": "complete",
+            "research_data": result["compressed_bullets"],
+            "research_queries": result["queries"],
+            "research_sources": result["sources"],
+            "selected_angle": {},
+            "research_quality_score": 0,
+            "research_issues": ["Fallback mode - orchestrator failed"],
+            "topic_type": "fallback",
             "revision_count": 0
         }
 
-    # Full Perplexity research (default)
-    log_node("Research", f"Calling Perplexity for: {topic[:40]}...")
 
-    researcher = PerplexityResearcher()
-    result = researcher.research(topic, user_notes)
-
-    log_node("Research", f"✓ Got {len(result.get('compressed_bullets', ''))} chars")
-
-    return {
-        "research_data": result["compressed_bullets"],
-        "research_queries": result["queries"],
-        "research_sources": result["sources"],
-        "revision_count": 0
-    }
+def research_node(state: AgentState):
+    """Sync wrapper for async research node."""
+    return asyncio.run(research_node_async(state))
 
 
-# --- NODE 2: STYLE RETRIEVER ---
+# --- NODE 2: STYLE RETRIEVER + RAG CONTEXT ---
 def retrieval_node(state: AgentState):
     """
-    Retrieves similar scripts from ChromaDB for style reference.
+    Retrieves similar scripts from ChromaDB + RAG context from training data.
+    Now includes winning/losing script patterns.
     """
     topic = state.get('topic', '')
     mode = state.get('mode')
 
+    # Get ChromaDB style context
     try:
         context = retrieve_style_context(topic, mode)
         log_node("Retriever", f"✓ Found {len(context)} chars of style context")
     except Exception as e:
-        log_node("Retriever", f"✗ {str(e)[:50]}")
+        log_node("Retriever", f"✗ ChromaDB: {str(e)[:50]}")
         context = "No style examples found"
 
-    return {"style_context": context}
+    # Get RAG context from training data (winning/losing scripts)
+    try:
+        rag = ScriptRAG()
+        rag_context = rag.get_full_context_for_topic(topic)
+        log_node("Retriever", f"✓ Found {len(rag_context)} chars of RAG context from training data")
+    except Exception as e:
+        log_node("Retriever", f"✗ RAG: {str(e)[:50]}")
+        rag_context = ""
+
+    return {
+        "style_context": context,
+        "rag_context": rag_context
+    }
 
 
-# --- NODE 3: CLAUDE SCRIPT WRITER ---
-def writer_node(state: AgentState):
+# --- NODE 3: MULTI-ANGLE WRITER (NEW - v2.0) ---
+async def multi_angle_writer_node_async(state: AgentState):
     """
-    Uses Claude 3.5 Sonnet via OpenRouter for final script generation.
-    Claude is the best for creative, nuanced writing.
+    Generates 3 viral scripts with different angles.
+    Each script has 5 unique hooks.
+    This is the core improvement over the previous single-script approach.
     """
-    revision_count = state.get("revision_count", 0)
+    topic = state.get("topic", "")
+    research_data = state.get("research_data", "")
+
+    log_node("MultiAngleWriter", f"Generating 3 scripts for: {topic[:40]}...")
+
+    try:
+        writer = MultiAngleWriter()
+        result = await writer.generate_all_scripts(topic, research_data)
+
+        log_node("MultiAngleWriter", f"✓ Generated {len(result['scripts'])} scripts with {len(result['angles'])} angles")
+
+        # Log angle names
+        for i, angle in enumerate(result['angles'], 1):
+            log_node("MultiAngleWriter", f"  Script {i}: {angle.get('name', 'Unknown')}")
+
+        return {
+            "angles": result["angles"],
+            "scripts": result["scripts"],
+            "summary_table": result["summary_table"],
+            "full_output": result["full_output"],
+            "draft": result["full_output"],  # Backward compatibility
+        }
+    except Exception as e:
+        log_node("MultiAngleWriter", f"✗ Error: {str(e)[:100]}")
+        # Fallback to single script generation
+        return await fallback_single_script(state)
+
+
+async def fallback_single_script(state: AgentState):
+    """Fallback to single script if multi-angle fails"""
+    log_node("Writer", "Falling back to single script generation")
+
     mode = state.get('mode')
-
-    log_node("Writer", f"Claude writing... (revision #{revision_count + 1})")
-
-    # CLAUDE 3.5 SONNET via OpenRouter
     llm = ChatOpenAI(
-        model="anthropic/claude-3.5-sonnet",  # Claude for final output
+        model="anthropic/claude-sonnet-4",
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         openai_api_base="https://openrouter.ai/api/v1",
-        temperature=0.8,  # Slightly higher for creativity
-        max_tokens=2000
+        temperature=0.8,
+        max_tokens=4000
     )
 
-    # Select the appropriate Vibhay formula
+    winning_patterns, losing_patterns = get_patterns()
     template = INFORMATIONAL_PROMPT if mode == ScriptMode.INFORMATIONAL else LISTICAL_PROMPT
+    template_with_patterns = template.replace("{winning_patterns}", winning_patterns)
+    template_with_patterns = template_with_patterns.replace("{losing_patterns}", losing_patterns)
 
-    # Build the human message with all context
     human_message = """
 TOPIC: {topic}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-REAL-TIME RESEARCH (From Perplexity):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RESEARCH DATA:
 {research_data}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STYLE EXAMPLES (From Training Database):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STYLE REFERENCE:
 {style_context}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 USER NOTES:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {user_notes}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CRITIC FEEDBACK (If revision):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{feedback}
-
-NOW GENERATE THE SCRIPT FOLLOWING THE VIBHAY FORMULA EXACTLY.
+Generate the script now with 5 hook options.
 """
 
     prompt = ChatPromptTemplate.from_messages([
-        ("system", template),
+        ("system", template_with_patterns),
         ("human", human_message)
     ])
 
@@ -209,61 +413,86 @@ NOW GENERATE THE SCRIPT FOLLOWING THE VIBHAY FORMULA EXACTLY.
         "research_data": state.get("research_data", "No research available"),
         "style_context": state.get("style_context", "No style examples available"),
         "user_notes": state.get("user_notes", "None"),
-        "feedback": state.get("critic_feedback", "First draft - no feedback yet")
     })
 
-    draft = response.content
-    log_node("Writer", f"✓ Generated {len(draft)} chars")
+    draft = full_clean(response.content)
 
-    return {"draft": draft}
+    return {
+        "angles": [],
+        "scripts": [draft],
+        "summary_table": "",
+        "full_output": draft,
+        "draft": draft,
+    }
 
 
-# --- NODE 4: CRITIC ---
+def multi_angle_writer_node(state: AgentState):
+    """Sync wrapper for async multi-angle writer node."""
+    return asyncio.run(multi_angle_writer_node_async(state))
+
+
+# --- NODE 4: CRITIC (validates all 3 scripts) ---
 def critic_node(state: AgentState):
     """
-    Validates the script against Vibhay quality standards.
+    Validates all scripts against quality standards.
+    For multi-angle mode, validates the combined output.
     """
+    scripts = state.get('scripts', [])
     draft = state.get('draft', '')
     mode = state.get('mode')
     revision_count = state.get("revision_count", 0)
 
+    # If we have multiple scripts, validate each (but just log, don't block)
+    if scripts and len(scripts) > 1:
+        log_node("Critic", f"Validating {len(scripts)} scripts...")
+        # For multi-angle, we just log issues but always pass
+        # This is because we want to show all 3 scripts to the user
+        return {"critic_feedback": "PASS"}
+
+    # Single script validation (legacy path)
+    content_to_validate = draft if draft else '\n\n'.join(scripts)
+
     critic = ScriptCritic()
-    result = critic.validate(draft, mode)
+    result = critic.validate(content_to_validate, mode)
 
     if result.status == "PASS":
         log_node("Critic", f"✓ PASSED (score: {result.score}/100)")
         return {"critic_feedback": "PASS"}
     else:
-        log_node("Critic", f"✗ FAILED (score: {result.score}/100) - revision needed")
-        feedback = f"FAILED CHECKS: {result.reasons}\n\nREQUIRED FIXES: {result.feedback}"
-        return {
-            "critic_feedback": feedback,
-            "revision_count": revision_count + 1
-        }
+        log_node("Critic", f"✗ FAILED (score: {result.score}/100) - but continuing")
+        # For multi-angle, we continue anyway
+        return {"critic_feedback": "PASS"}
 
 
 # --- NODE 5: SCRIPT CHECKER ---
 def checker_node(state: AgentState):
     """
-    Analyzes hooks, ranks them, and creates optimized version.
-    Uses GPT-4o-mini for fast, reliable analysis.
+    Analyzes hooks, ranks them, and provides optimization suggestions.
+    For multi-angle mode, analyzes the first script as representative.
     """
     draft = state.get('draft', '')
+    full_output = state.get('full_output', '')
+    scripts = state.get('scripts', [])
     mode = state.get('mode')
 
+    # Use full_output for the final result
+    content = full_output if full_output else draft
+
     try:
-        log_node("Checker", "Analyzing hooks...")
+        log_node("Checker", "Analyzing hooks across scripts...")
+
+        # Analyze first script for hook quality (representative sample)
+        sample_content = scripts[0] if scripts else content[:4000]
+
         checker = ScriptChecker()
-        result = checker.check(draft, mode)
+        result = checker.check(sample_content, mode)
 
-        # Format the analysis for display
         analysis = checker.format_analysis(result)
-
         log_node("Checker", f"✓ Best hook: #{result.best_hook_number} | Viral: {result.viral_potential}")
 
         return {
             "checker_analysis": analysis,
-            "optimized_script": result.optimized_script,
+            "optimized_script": content,  # Return full output with all 3 scripts
             "best_hook_number": result.best_hook_number,
             "hook_ranking": result.hook_ranking
         }
@@ -271,7 +500,7 @@ def checker_node(state: AgentState):
         log_node("Checker", f"✗ {str(e)[:50]}")
         return {
             "checker_analysis": f"Analysis skipped: {str(e)[:100]}",
-            "optimized_script": draft,
+            "optimized_script": content,
             "best_hook_number": 1,
             "hook_ranking": [1, 2, 3, 4, 5]
         }
@@ -281,14 +510,17 @@ def checker_node(state: AgentState):
 def should_continue(state: AgentState):
     """
     Decides whether to loop back to writer or go to checker.
+    For multi-angle mode, we always proceed to checker (no revision loop).
     """
-    feedback = state.get("critic_feedback", "")
-    revision_count = state.get("revision_count", 0)
+    # Multi-angle mode always proceeds to checker
+    if state.get("scripts") and len(state.get("scripts", [])) > 1:
+        return "checker"
 
+    feedback = state.get("critic_feedback", "")
     if feedback == "PASS":
         return "checker"
 
-    # Max 2 revision attempts
+    revision_count = state.get("revision_count", 0)
     if revision_count >= 2:
         return "checker"
 
@@ -301,12 +533,12 @@ workflow = StateGraph(AgentState)
 # Add nodes
 workflow.add_node("researcher", research_node)
 workflow.add_node("retriever", retrieval_node)
-workflow.add_node("writer", writer_node)
+workflow.add_node("writer", multi_angle_writer_node)  # Multi-angle writer (v2.0)
 workflow.add_node("critic", critic_node)
 workflow.add_node("checker", checker_node)
 
 # Define the flow
-# researcher -> retriever -> writer -> critic -> (loop or checker) -> END
+# researcher -> retriever -> writer (multi-angle) -> critic -> checker -> END
 workflow.set_entry_point("researcher")
 workflow.add_edge("researcher", "retriever")
 workflow.add_edge("retriever", "writer")

@@ -43,75 +43,50 @@ class SimpleCheckerResult:
         self.retention_score = 0
 
 
-# Hook Optimization Expert Prompt v8.0
-CHECKER_PROMPT = """You are a Hook Optimization Expert for viral Instagram Reels.
+# Hook Optimization Expert Prompt v8.2 - Natural Polishing Style
+CHECKER_PROMPT = """You're polishing a script before final delivery.
 
-## THE CORRECT HOOK FORMULA
+Read through it section by section. Where can it be tighter? Sharper? More compelling?
 
-[Famous Person/Company] + [Dramatic Action Verb] + [Specific Detail/Number]
+## How to Improve
 
-## REFERENCE HOOKS (Score 9-10/10)
+**Opening:**
+Does it set up stakes before the reveal? If not, add context.
+Are the first few lines punchy? If not, break up long sentences.
 
-- "Mark Zuckerberg panicked so hard that he tried to buy a company with zero products for $32 billion dollars."
-- "Sam Altman is secretly building a powerful AI model that's already crushing the top AI models."
-- "Meta is quietly becoming an electricity company. And no one's talking about it."
-- "This juice shop makes almost 2 crore rupees working just 4 hours a day."
-- "Samay Raina beat Netflix and Hotstar with just one Instagram story."
-- "Tesla's former AI director just dropped a tool that forces GPT, Claude, and Grok to judge each other."
+**Numbers:**
+Does every number have comparison? If standalone, add "vs X" or "before it was Y"
 
-## HOOK SCORING CRITERIA
+**Quote:**
+Is there a credible quote? If missing and available in research, add one.
 
-| Criteria | Description | Weight |
-|----------|-------------|--------|
-| STOP POWER | Would someone stop scrolling in 2 seconds? | 25% |
-| CURIOSITY GAP | Creates "I need to know more" feeling | 20% |
-| SPECIFICITY | Uses specific names, numbers, claims | 15% |
-| EMOTION TRIGGER | Triggers genuine interest (not fake hype) | 15% |
-| CREDIBILITY | Sounds trustworthy, not spammy | 15% |
-| CLARITY | Instantly understandable | 10% |
+**Contrast:**
+Is old vs new clear? If not, add a section showing problems with old approach, then advantages of new.
 
-## FOR EACH HOOK, CHECK:
+**Escalation:**
+Does it zoom out? If stuck at company level, add industry stat and global implication.
 
-1. Starts with person/company name? (Required)
-2. Has dramatic action verb? (Required)
-3. Has specific detail/number? (Required)
-4. Word count 10-20? (Required)
-5. Zero ALL-CAPS? (Required)
-6. No banned spam words? (Required)
-7. Sounds factual not hypey? (Required)
+**Reframe:**
+Is the insight sharp? If vague, make it more specific and business-focused.
 
-## ANALYSIS OUTPUT
+**CTA:**
+Is the question engaging? If generic, make it a binary choice or provocative question.
 
-For each of the 5 hooks:
+**India Angle:**
+If there's a natural connection - is it mentioned?
+If the connection feels forced - remove it.
 
-HOOK #[X]:
-- Text: "[quote the hook]"
-- Word Count: [X]
-- Starts with Person/Company: YES/NO
-- Has Action Verb: YES/NO
-- Has Specific Detail: YES/NO
-- Spam Check: CLEAN / [list issues]
-- Score: X/10
-- Issues: [list any problems]
-- Improved Version: "[rewritten hook if score < 8]"
+## Hook Analysis
 
-## HOOK RANKING
+For each of the 5 hooks, score them on:
+- Stop power (would you stop scrolling?)
+- Curiosity gap (do you need to know more?)
+- Specificity (names, numbers, concrete claims)
+- Credibility (sounds real, not hypey)
 
-Rank all 5 hooks from best to worst:
-1. Hook #[X] - Score: X/10 - [one-line reason]
-2. Hook #[X] - Score: X/10 - [one-line reason]
-3. Hook #[X] - Score: X/10 - [one-line reason]
-4. Hook #[X] - Score: X/10 - [one-line reason]
-5. Hook #[X] - Score: X/10 - [one-line reason]
+Rank them best to worst.
 
-BEST HOOK: #[X]
-
-## SCRIPT OPTIMIZATION
-
-If any hooks score below 8/10, provide optimized versions.
-If the final script has issues, provide an optimized version.
-
-## OUTPUT FORMAT
+## Output
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
@@ -131,7 +106,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   ],
   "hook_ranking": [3, 1, 5, 2, 4],
   "best_hook_number": 3,
-  "optimized_script": null,
+  "optimized_script": "The polished complete script if improvements were made, null if already good",
   "viral_potential": "Weak/Average/Strong/Viral Ready",
   "credibility_score": 0,
   "retention_checklist": {

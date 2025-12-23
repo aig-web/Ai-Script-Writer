@@ -118,11 +118,7 @@ class ScriptCritic:
         if '"' not in text or text.count('"') < 2:
             missing.append("Direct quote in quotation marks")
 
-        # Check for India relevance keywords
-        india_keywords = ['india', 'indian', 'rupee', '₹', 'rs.', 'crore', 'lakh']
-        has_india = any(kw in text.lower() for kw in india_keywords)
-        if not has_india:
-            missing.append("India relevance")
+        # Note: India relevance is NOT required - only include if natural connection exists
 
         # Mode-specific checks
         if mode == ScriptMode.LISTICAL:
@@ -167,83 +163,56 @@ class ScriptCritic:
             )
 
         # LLM-based validation for nuanced checks
-        system_msg = f"""You are a Script Quality Validator for viral Instagram Reels (Indian tech audience).
+        system_msg = f"""You're reviewing a script before it goes out.
+
+Read it like a viewer would. Does it hold attention? Does it make sense? Does it feel authentic?
 
 MODE: {mode.value.upper()}
 
-## VALIDATION CHECKLIST
+## Things to Check
 
-### 1. SPAM WORD CHECK (Automatic FAIL if found)
-BANNED WORDS - Script FAILS if ANY are found:
-- DESTROYED, PANICKING, TERRIFYING, CHAOS, INSANE (in caps)
-- EXPOSED, BACKSTABBED, FURIOUS, TREMBLING, SHOCKING (in caps)
-- MIND-BLOWING (in caps)
-- Any ALL-CAPS words used for emphasis
+**Does the opening hook?**
+Is there a reason to keep watching in the first 3 seconds? Or does it start slow?
 
-BANNED PHRASES:
-- "No [X] is safe anymore"
-- "[Company] is PANICKING"
-- "Drop a [emoji] if..."
-- "The [industry] is TREMBLING"
-- "Big tech doesn't want you to see this"
+**Is there rhythm?**
+Short punchy lines in the opening? Or long sentences that lose momentum?
 
-### 2. HOOK FORMAT CHECK
-Required:
-- Starts with "## HOOK OPTIONS" header
-- Exactly 5 hooks provided
-- Each hook is 10-20 words
-- Each hook starts with person/company name (not "This" or "What if")
-- Each hook contains action verb (dropped, released, built, rejected, etc.)
-- Each hook contains specific detail (number, company, outcome)
-- NO type labels like "(Quote-Based)" or "(Contrarian)"
-- NO ALL-CAPS words in any hook
+**Do the numbers land?**
+Every number should have context. If there's a stat without comparison, flag it.
 
-### 3. FINAL SCRIPT FORMAT CHECK
-Required:
-- Starts with "## FINAL SCRIPT" header
-- Uses best hook from options
-- Word count: 120-150 words
-- Contains at least 1 direct quote in "quotation marks"
-- Contains specific numbers (not rounded)
-- Contains India relevance
-- Has genuine CTA (not "Drop a [emoji]")
-- Short sentences (under 12 words average)
-- One-sentence paragraphs used for emphasis
+**Is there proof?**
+A quote from someone credible? Something that makes this feel real, not just claims?
 
-### 4. STYLE CHECK
-Required:
-- Zero ALL-CAPS words in entire script (except acronyms)
-- Zero banned spam words
-- Credible tone (not clickbaity)
-- Transitions used ("But here's...", "Plot twist:", etc.)
-- Maximum 1 emoji (at end in CTA only)
+**Is the contrast clear?**
+Can you quickly understand old way vs new way? Problems vs solutions?
 
-### 5. STRUCTURE CHECK
-Required elements present:
-- Hook (scroll-stopper)
-- Stakes amplifier
-- Credibility build
-- Pattern interrupt/transition
-- Revelation/explanation
-- Proof/stats
-- India angle
-- Insight/reframe
-- Open question
-- CTA
+**Does it zoom out?**
+Is there a bigger picture? Industry impact? Or does it stay small?
 
-## SCORING
-- 0-30 points: Spam/format issues
-- 30-50 points: Missing elements
-- 50-70 points: Weak execution
-- 70-85 points: Good, minor issues
-- 85-100 points: Excellent, ready to use
+**Does the insight land?**
+Is there a sharp reframe at the end? Or generic fluff?
 
-Score < 60: FAIL - Return specific feedback
-Score >= 60: PASS
+**Is the CTA engaging?**
+Does the closing question make you want to respond? Or is it generic?
+
+**Is the India angle natural?**
+If there's an India connection - does it feel organic or forced?
+If there's no connection - good, don't force one.
+
+## Pre-Check Results
+- Spam words found: {spam_words}
+- Caps words found: {caps_words}
+- Missing elements: {missing_elements}
+
+## Scoring
+- 85-100: Ship it - ready to post
+- 70-84: Good - minor polish needed
+- 50-69: Needs work - specific issues to fix
+- Below 50: Major revision needed
 
 ## OUTPUT FORMAT
 Return ONLY valid JSON:
-{{"status": "PASS" or "FAIL", "score": 0-100, "spam_words_found": [], "caps_words_found": [], "missing_elements": [], "reasons": ["reason1", "reason2"], "feedback": "Detailed feedback"}}"""
+{{"status": "PASS" or "FAIL", "score": 0-100, "spam_words_found": [], "caps_words_found": [], "missing_elements": [], "reasons": ["what's working well"], "feedback": "What needs work and how to fix it"}}"""
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_msg),

@@ -159,7 +159,10 @@ async def generate_stream(
                 "revision_count": 0,
                 "skip_research": skip_research,
             }
-            yield json.dumps({"type": "status", "message": f"Agent starting ({mode.value})..."}) + "\n"
+            if skip_research:
+                yield json.dumps({"type": "status", "message": f"Agent starting ({mode.value})..."}) + "\n"
+            else:
+                yield json.dumps({"type": "status", "message": "Stage 0: Detecting topic type..."}) + "\n"
             final_draft = ""
             checker_analysis = ""
             optimized_script = ""
@@ -168,20 +171,72 @@ async def generate_stream(
             async for step in agent_app.astream(initial_state):
                 for node, output in step.items():
                     if node == "researcher":
-                        # Send research data
+                        # Check research status first
+                        research_status = output.get("research_status", "complete")
+
+                        # Handle generic topic (needs angle selection)
+                        if research_status == "needs_specific_angle":
+                            yield json.dumps({
+                                "type": "needs_input",
+                                "input_type": "angle_selection",
+                                "message": output.get("research_message", "This topic is too generic. Please select a specific angle."),
+                                "options": output.get("suggested_angles", []),
+                                "topic_type": "B"
+                            }) + "\n"
+                            yield json.dumps({"type": "status", "message": "Waiting for angle selection..."}) + "\n"
+                            return  # Stop here - frontend will re-submit with selected angle
+
+                        # Handle ambiguous topic (needs clarification)
+                        if research_status == "needs_clarification":
+                            yield json.dumps({
+                                "type": "needs_input",
+                                "input_type": "clarification",
+                                "message": output.get("research_message", "This topic is too broad. Please clarify."),
+                                "questions": output.get("clarification_questions", []),
+                                "options": output.get("suggested_angles", []),
+                                "topic_type": "D"
+                            }) + "\n"
+                            yield json.dumps({"type": "status", "message": "Waiting for clarification..."}) + "\n"
+                            return  # Stop here - frontend will re-submit with clarification
+
+                        # Normal flow - send research data
                         research_data = output.get("research_data", "")
-                        yield json.dumps({"type": "research", "data": research_data}) + "\n"
+                        if research_data:
+                            yield json.dumps({"type": "research", "data": research_data}) + "\n"
+
                         # Send sources if available
                         sources = output.get("research_sources", [])
                         if sources:
                             yield json.dumps({"type": "sources", "data": sources}) + "\n"
-                        yield json.dumps({"type": "status", "message": "Research complete..."}) + "\n"
+
+                        # Send quality score if available
+                        quality_score = output.get("research_quality_score", 0)
+                        topic_type = output.get("topic_type", "A")
+                        selected_angle = output.get("selected_angle", {})
+                        angle_name = selected_angle.get("angle", "")[:50] if selected_angle else ""
+
+                        if quality_score > 0:
+                            yield json.dumps({
+                                "type": "status",
+                                "message": f"Research complete (Quality: {quality_score}/100)"
+                            }) + "\n"
+                        else:
+                            yield json.dumps({"type": "status", "message": "Research complete..."}) + "\n"
 
                     if node == "retriever":
                         yield json.dumps({"type": "status", "message": "Analyzing trained styles..."}) + "\n"
 
                     if node == "writer":
-                        yield json.dumps({"type": "status", "message": "Claude is writing script..."}) + "\n"
+                        # Check if multi-angle mode
+                        if output.get("angles"):
+                            angles = output.get("angles", [])
+                            yield json.dumps({
+                                "type": "angles",
+                                "data": [{"name": a.get("name", ""), "focus": a.get("focus", "")} for a in angles]
+                            }) + "\n"
+                            yield json.dumps({"type": "status", "message": f"Generated 3 scripts with different angles..."}) + "\n"
+                        else:
+                            yield json.dumps({"type": "status", "message": "Claude is writing script..."}) + "\n"
 
                     if node == "critic":
                         if output.get("critic_feedback") == "PASS":
@@ -209,21 +264,45 @@ async def generate_stream(
                                 }
                             }) + "\n"
 
-                    # Capture latest draft
+                    # Capture latest draft and multi-angle data
                     if "draft" in output:
                         final_draft = output["draft"]
+
+                    # Capture multi-angle specific data
+                    if "scripts" in output:
+                        scripts_list = output["scripts"]
+                    if "angles" in output:
+                        angles_list = output["angles"]
+                    if "summary_table" in output:
+                        summary_table = output["summary_table"]
+                    if "full_output" in output:
+                        full_output = output["full_output"]
 
             # 4. Final Result
             total_time = time.time() - start_time
             print(f"[Generate] ✓ Complete in {total_time:.1f}s | Draft: {len(final_draft)} chars")
 
-            yield json.dumps({
-                "type": "result",
-                "data": {
-                    "draft": final_draft,
-                    "optimized": optimized_script if optimized_script else final_draft
-                }
-            }) + "\n"
+            # Check if we have multi-angle output
+            if 'scripts_list' in dir() and scripts_list and len(scripts_list) > 1:
+                yield json.dumps({
+                    "type": "result",
+                    "data": {
+                        "scripts": scripts_list,
+                        "angles": angles_list if 'angles_list' in dir() else [],
+                        "summary_table": summary_table if 'summary_table' in dir() else "",
+                        "full_output": full_output if 'full_output' in dir() else final_draft,
+                        "draft": final_draft,
+                        "optimized": optimized_script if optimized_script else final_draft
+                    }
+                }) + "\n"
+            else:
+                yield json.dumps({
+                    "type": "result",
+                    "data": {
+                        "draft": final_draft,
+                        "optimized": optimized_script if optimized_script else final_draft
+                    }
+                }) + "\n"
 
         except Exception as e:
             print(f"\n❌ ERROR: {str(e)}")

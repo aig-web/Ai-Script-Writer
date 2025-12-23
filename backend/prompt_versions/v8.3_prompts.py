@@ -1,7 +1,28 @@
 # =============================================================================
-# VIRAL SCRIPT FORMULA SYSTEM v8.3
-# Universal Viral System - Hooks throughout, layman language, perspective-driven
+# PROMPT VERSION 8.3 - Universal Viral System
+# Date: 2024-12-23
+# Changes: Complete overhaul - hooks throughout, layman language, perspective-driven
+# Status: ACTIVE
 # =============================================================================
+
+"""
+CHANGES FROM v8.2 → v8.3:
+- Added "HOOKS THROUGHOUT" concept - mini-cliffhangers every major point
+- Added LAYMAN LANGUAGE GUIDE - translate technical terms
+- Added PERSPECTIVE requirement - not Wikipedia, have opinions
+- Made India angle natural (only when genuine connection exists)
+- Added dynamic pattern injection from winning/losing scripts database
+- Removed checklist from output (clean output only)
+- Added mid-script retention triggers
+
+KEY PRINCIPLES IN v8.3:
+1. Multiple hooks throughout (not just opening)
+2. Layman language (no unexplained jargon)
+3. Perspective/opinion (not summary tone)
+4. Natural India angles (only if genuine)
+5. Pattern injection (what works vs what doesn't)
+6. Clean output (no bullets, no checklist)
+"""
 
 INFORMATIONAL_PROMPT = """
 You write viral Instagram Reel scripts. 60 seconds. Spoken out loud. For Indian tech audiences - but they're smart people who want interesting stories, not dumbed-down content.
@@ -321,4 +342,84 @@ No checklist. No bullet points in the script. Just the hooks and script.
 
 **Topic:**
 {topic}
+"""
+
+
+# =============================================================================
+# CONNECT PROMPT (Stage 4 of Research Orchestrator) - v8.3
+# =============================================================================
+
+CONNECT_PROMPT_TEMPLATE = """
+You are a narrative architect. Organize research facts into a connected story flow.
+
+## THE RESEARCH:
+
+{deep_research}
+
+## THE SELECTED ANGLE:
+
+{selected_angle}
+
+## KEY PRINCIPLES
+
+1. **CONTEXT FIRST** - Explain WHY this is happening before WHAT happened
+2. **NUMBERS WITH MEANING** - Show before→after, not standalone numbers
+3. **CONTRAST** - Compare old way vs new way when applicable
+4. **ESCALATION** - Zoom from company → industry → global
+5. **HOOKS THROUGHOUT** - Add curiosity triggers between major points
+6. **LAYMAN LANGUAGE** - No jargon without explanation
+
+## ORGANIZE THE RESEARCH INTO:
+
+**HOOK OPTIONS (3 variations):**
+- One using "While everyone's focused on X, Y quietly happened..."
+- One using person/company + unexpected action
+- One with India angle if applicable
+
+**CONTEXT/BACKSTORY:**
+What triggered this? Why is this happening NOW?
+
+**NUMBERS WITH CONTEXT:**
+Before → After with percentage change or comparison
+
+**THE STORY:**
+Who did what, explained simply
+
+**CONTRAST (if applicable):**
+Old approach problems vs new approach advantages
+
+**ESCALATION:**
+Company stat → Industry stat → Global implication
+
+**INSIGHT:**
+Sharp, specific reframe (not generic "this changes everything")
+
+**INDIA ANGLE:**
+How this affects Indian audience (with Rs. if applicable)
+Leave empty if no natural connection.
+
+**OPEN QUESTION:**
+Genuine question that prompts thought, not "what do you think?"
+
+## OUTPUT FORMAT
+
+Provide the organized research in these sections:
+
+**HOOK OPTIONS:** 3 different hook angles
+
+**CONTEXT:** The backstory/trigger
+
+**NUMBERS:** Key stats with context
+
+**THE STORY:** Core narrative
+
+**CONTRAST:** Old vs new (if applicable)
+
+**ESCALATION:** Bigger picture stats
+
+**INSIGHT:** Sharp reframe
+
+**INDIA ANGLE:** Local relevance (if natural)
+
+**QUESTION:** Engagement prompt
 """
