@@ -23,7 +23,7 @@ export default function TrainPage() {
     setDebugInfo("");
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
       const response = await axios.post(`${apiUrl}/train_script`, {
         title,
         script_content: content,

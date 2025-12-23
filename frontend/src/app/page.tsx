@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
-import { Send, BookOpen, Layers, FileText, Copy, Zap, FileUp, X, ChevronRight, CheckCircle } from "lucide-react";
+import { Send, BookOpen, Layers, FileText, Copy, Zap, FileUp, X, ChevronRight, CheckCircle, MessageCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 // Animated dots component for loading states
@@ -25,16 +25,31 @@ interface ScriptAngle {
   hook_style?: string;
 }
 
-interface SavedScript {
+interface ChatMessage {
+  id?: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at?: string;
+}
+
+interface SessionData {
   id: string;
   topic: string;
   mode: string;
-  scripts: string[];
-  angles: ScriptAngle[];
-  timestamp: Date;
+  user_notes: string;
+  research_data: string;
+  research_sources: any[];
+  files?: any[];
+  scripts?: any[];
+  chat_history?: { [key: number]: ChatMessage[] };
+  created_at: string;
+  updated_at: string;
 }
 
 export default function StudioPage() {
+  // Remove trailing slash from API URL to prevent double-slash issues
+  const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+
   const [topic, setTopic] = useState("");
   const [notes, setNotes] = useState("");
   const [mode, setMode] = useState("informational");
@@ -47,15 +62,25 @@ export default function StudioPage() {
   const [researchData, setResearchData] = useState<string[]>([]);
   const [finalScript, setFinalScript] = useState("");
 
-  // Multi-angle state (NEW)
+  // Multi-angle state
   const [angles, setAngles] = useState<ScriptAngle[]>([]);
   const [scripts, setScripts] = useState<string[]>([]);
   const [activeScriptTab, setActiveScriptTab] = useState(0);
 
-  // Script history state
-  const [scriptHistory, setScriptHistory] = useState<SavedScript[]>([]);
+  // Session state (Supabase)
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<SessionData[]>([]);
   const [showHistory, setShowHistory] = useState(false);
-  const [saveMessage, setSaveMessage] = useState("");
+
+  // Chat state (per-script)
+  const [showChat, setShowChat] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState<{ [key: number]: ChatMessage[] }>({ 1: [], 2: [], 3: [] });
+  const [isChatLoading, setIsChatLoading] = useState(false);
+
+  // Text selection state for "Edit with Claude" popup
+  const [selectedText, setSelectedText] = useState("");
+  const [selectionPopup, setSelectionPopup] = useState<{ show: boolean; x: number; y: number }>({ show: false, x: 0, y: 0 });
 
   // Angle selection state (for generic topics)
   const [showAngleSelection, setShowAngleSelection] = useState(false);
@@ -63,55 +88,344 @@ export default function StudioPage() {
   const [angleMessage, setAngleMessage] = useState("");
 
   const researchEndRef = useRef<HTMLDivElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Load history from localStorage on mount
+  // Load sessions from Supabase AND localStorage on mount
   useEffect(() => {
-    const saved = localStorage.getItem("scriptHistory");
-    if (saved) {
-      try {
-        setScriptHistory(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to load history", e);
-      }
-    }
+    loadSessions();
+    loadLocalHistory();
   }, []);
 
-  // Save script to history
-  const saveToHistory = () => {
-    const hasContent = scripts.length > 0 || finalScript.length > 0;
-    if (!hasContent) return;
+  // Load history from localStorage (fallback when Supabase not available)
+  const loadLocalHistory = () => {
+    try {
+      const stored = localStorage.getItem("scriptai_history");
+      if (stored) {
+        const localSessions = JSON.parse(stored);
+        // Merge with Supabase sessions (local sessions have id starting with "local-")
+        setSessions(prev => {
+          const supabaseSessions = prev.filter(s => !s.id.startsWith("local-"));
+          return [...supabaseSessions, ...localSessions];
+        });
+      }
+    } catch (e) {
+      console.log("No local history found");
+    }
+  };
 
-    const newEntry: SavedScript = {
-      id: Date.now().toString(),
-      topic: topic,
-      mode: mode,
-      scripts: scripts.length > 0 ? scripts : [finalScript],
-      angles: angles,
-      timestamp: new Date(),
+  // Save to localStorage history
+  const saveToLocalHistory = (topic: string, mode: string, scripts: string[], angles: ScriptAngle[], research: string) => {
+    try {
+      const stored = localStorage.getItem("scriptai_history");
+      const existing = stored ? JSON.parse(stored) : [];
+
+      const newSession = {
+        id: `local-${Date.now()}`,
+        topic,
+        mode,
+        user_notes: notes,
+        research_data: research,
+        scripts: scripts.map((s, i) => ({
+          script_content: s,
+          angle_name: angles[i]?.name || "",
+          angle_focus: angles[i]?.focus || "",
+          script_number: i + 1
+        })),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      // Keep only last 20 sessions
+      const updated = [newSession, ...existing].slice(0, 20);
+      localStorage.setItem("scriptai_history", JSON.stringify(updated));
+
+      // Update state
+      setSessions(prev => {
+        const supabaseSessions = prev.filter(s => !s.id.startsWith("local-"));
+        return [...supabaseSessions, ...updated];
+      });
+
+      console.log("[LocalHistory] Saved:", newSession.id);
+    } catch (e) {
+      console.error("Failed to save local history", e);
+    }
+  };
+
+  // Scroll chat to bottom when messages change
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, activeScriptTab]);
+
+  // Handle text selection in script area - show popup after mouseup
+  const handleTextSelection = () => {
+    // Use setTimeout to ensure selection is complete
+    setTimeout(() => {
+      const selection = window.getSelection();
+      const text = selection?.toString().trim();
+
+      // Only show popup if there's meaningful selected text and scripts exist
+      if (text && text.length > 10 && hasMultipleScripts) {
+        // Store the selected text
+        setSelectedText(text);
+
+        // Get position for popup
+        const range = selection?.getRangeAt(0);
+        if (range) {
+          const rect = range.getBoundingClientRect();
+          setSelectionPopup({
+            show: true,
+            x: rect.left + rect.width / 2,
+            y: rect.top - 10
+          });
+        }
+      }
+    }, 50);
+  };
+
+  // Hide popup when clicking outside (but not on the popup itself)
+  useEffect(() => {
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Don't hide if clicking on the popup
+      if (target.closest('.selection-popup')) {
+        return;
+      }
+      // Hide popup on any other click
+      if (selectionPopup.show) {
+        setSelectionPopup({ show: false, x: 0, y: 0 });
+      }
     };
 
-    const updated = [newEntry, ...scriptHistory].slice(0, 50); // Keep last 50
-    setScriptHistory(updated);
-    localStorage.setItem("scriptHistory", JSON.stringify(updated));
-    setSaveMessage("Saved!");
-    setTimeout(() => setSaveMessage(""), 2000);
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [selectionPopup.show]);
+
+  // Edit selected text with Claude - called when popup is clicked
+  const editSelectedText = () => {
+    // Get the currently stored selected text
+    const textToEdit = selectedText;
+
+    if (!textToEdit) {
+      console.log("No selected text to edit");
+      return;
+    }
+
+    console.log("Editing text:", textToEdit.slice(0, 50));
+
+    // Hide popup first
+    setSelectionPopup({ show: false, x: 0, y: 0 });
+
+    // Clear browser selection
+    window.getSelection()?.removeAllRanges();
+
+    // Open chat panel and pre-fill with context
+    setShowChat(true);
+    const truncatedText = textToEdit.length > 100 ? textToEdit.slice(0, 100) + '...' : textToEdit;
+    setChatInput(`"${truncatedText}"\n\nMake it `);
+
+    // Focus the chat input after a short delay
+    setTimeout(() => {
+      const chatInputEl = document.querySelector('textarea[placeholder*="Tell Claude"]') as HTMLTextAreaElement;
+      if (chatInputEl) {
+        chatInputEl.focus();
+        // Move cursor to end
+        const len = chatInputEl.value.length;
+        chatInputEl.setSelectionRange(len, len);
+      }
+    }, 300);
   };
 
-  // Load script from history
-  const loadFromHistory = (entry: SavedScript) => {
-    setTopic(entry.topic);
-    setMode(entry.mode);
-    setScripts(entry.scripts);
-    setAngles(entry.angles);
-    setFinalScript(entry.scripts[0] || "");
-    setShowHistory(false);
+  const loadSessions = async () => {
+    try {
+      const response = await fetch(`${apiUrl}/sessions`);
+      if (response.ok) {
+        const data = await response.json();
+        setSessions(data.sessions || []);
+      }
+    } catch (e) {
+      // Sessions may not be available if Supabase tables don't exist - this is OK
+      console.log("Sessions not available - Supabase may not be configured");
+      setSessions([]);
+    }
   };
 
-  // Delete from history
-  const deleteFromHistory = (id: string) => {
-    const updated = scriptHistory.filter(s => s.id !== id);
-    setScriptHistory(updated);
-    localStorage.setItem("scriptHistory", JSON.stringify(updated));
+  // Load a session from history (supports both Supabase and localStorage)
+  const loadFromHistory = async (sessionId: string) => {
+    try {
+      // Check if this is a local session
+      if (sessionId.startsWith("local-")) {
+        // Load from localStorage
+        const stored = localStorage.getItem("scriptai_history");
+        if (stored) {
+          const localSessions = JSON.parse(stored);
+          const session = localSessions.find((s: any) => s.id === sessionId);
+          if (session) {
+            setCurrentSessionId(session.id);
+            setTopic(session.topic);
+            setMode(session.mode);
+            setNotes(session.user_notes || "");
+
+            if (session.research_data) {
+              const lines = session.research_data.split("\n").filter((l: string) => l.trim().length > 10);
+              setResearchData(lines);
+            }
+
+            if (session.scripts && session.scripts.length > 0) {
+              const scriptContents = session.scripts.map((s: any) => s.script_content);
+              const scriptAngles = session.scripts.map((s: any) => ({
+                name: s.angle_name || "",
+                focus: s.angle_focus || "",
+                hook_style: s.angle_hook_style || ""
+              }));
+              setScripts(scriptContents);
+              setAngles(scriptAngles);
+              setFinalScript(scriptContents[0] || "");
+            }
+
+            setChatMessages({ 1: [], 2: [], 3: [] });
+            setShowHistory(false);
+            setStatus("Session loaded (local)");
+            return;
+          }
+        }
+        throw new Error("Local session not found");
+      }
+
+      // Load from Supabase
+      const response = await fetch(`${apiUrl}/sessions/${sessionId}`);
+      if (!response.ok) throw new Error("Failed to load session");
+
+      const session: SessionData = await response.json();
+
+      // Restore all state
+      setCurrentSessionId(session.id);
+      setTopic(session.topic);
+      setMode(session.mode);
+      setNotes(session.user_notes || "");
+
+      // Restore research data
+      if (session.research_data) {
+        const lines = session.research_data.split("\n").filter((l: string) => l.trim().length > 10);
+        setResearchData(lines);
+      }
+
+      // Restore scripts and angles
+      if (session.scripts && session.scripts.length > 0) {
+        const scriptContents = session.scripts.map((s: any) => s.script_content);
+        const scriptAngles = session.scripts.map((s: any) => ({
+          name: s.angle_name || "",
+          focus: s.angle_focus || "",
+          hook_style: s.angle_hook_style || ""
+        }));
+        setScripts(scriptContents);
+        setAngles(scriptAngles);
+        setFinalScript(scriptContents[0] || "");
+      }
+
+      // Restore chat history
+      if (session.chat_history) {
+        setChatMessages(session.chat_history as { [key: number]: ChatMessage[] });
+      }
+
+      setShowHistory(false);
+      setStatus("Session loaded");
+    } catch (e) {
+      console.error("Failed to load session", e);
+      alert("Failed to load session");
+    }
+  };
+
+  // Delete a session (supports both Supabase and localStorage)
+  const deleteFromHistory = async (sessionId: string) => {
+    try {
+      // Check if this is a local session
+      if (sessionId.startsWith("local-")) {
+        // Delete from localStorage
+        const stored = localStorage.getItem("scriptai_history");
+        if (stored) {
+          const localSessions = JSON.parse(stored);
+          const updated = localSessions.filter((s: any) => s.id !== sessionId);
+          localStorage.setItem("scriptai_history", JSON.stringify(updated));
+        }
+        setSessions(sessions.filter(s => s.id !== sessionId));
+        return;
+      }
+
+      // Delete from Supabase
+      await fetch(`${apiUrl}/sessions/${sessionId}`, { method: "DELETE" });
+      setSessions(sessions.filter(s => s.id !== sessionId));
+    } catch (e) {
+      console.error("Failed to delete session", e);
+    }
+  };
+
+  // Send chat message - works in both local and Supabase mode
+  const sendChatMessage = async () => {
+    if (!chatInput.trim() || isChatLoading) return;
+
+    // Need script content to chat
+    const currentScriptContent = scripts[activeScriptTab];
+    if (!currentScriptContent) {
+      alert("No script to edit. Generate scripts first.");
+      return;
+    }
+
+    const scriptNumber = activeScriptTab + 1;
+    const userMessage: ChatMessage = { role: "user", content: chatInput };
+    const messageToSend = chatInput;
+
+    // Add user message to UI immediately
+    setChatMessages(prev => ({
+      ...prev,
+      [scriptNumber]: [...(prev[scriptNumber] || []), userMessage]
+    }));
+    setChatInput("");
+    setIsChatLoading(true);
+
+    try {
+      // Use local chat endpoint (works without Supabase)
+      const currentAngle = angles[activeScriptTab] || {};
+      const response = await fetch(`${apiUrl}/chat/local`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          script_content: currentScriptContent,
+          message: messageToSend,
+          script_number: scriptNumber,
+          angle_name: currentAngle.name || "",
+          angle_focus: currentAngle.focus || ""
+        })
+      });
+
+      if (!response.ok) throw new Error("Chat failed");
+
+      const data = await response.json();
+
+      // Add assistant response
+      const assistantMessage: ChatMessage = { role: "assistant", content: data.response };
+      setChatMessages(prev => ({
+        ...prev,
+        [scriptNumber]: [...(prev[scriptNumber] || []), assistantMessage]
+      }));
+
+      // Update script if changed
+      if (data.script_changed && data.updated_script) {
+        setScripts(prev => {
+          const updated = [...prev];
+          updated[activeScriptTab] = data.updated_script;
+          return updated;
+        });
+      }
+    } catch (e) {
+      console.error("Chat error", e);
+      // Add error message
+      setChatMessages(prev => ({
+        ...prev,
+        [scriptNumber]: [...(prev[scriptNumber] || []), { role: "assistant", content: "Sorry, something went wrong. Please try again." }]
+      }));
+    } finally {
+      setIsChatLoading(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -150,6 +464,8 @@ export default function StudioPage() {
     setAngles([]);
     setActiveScriptTab(0);
     setResearchData([]);
+    setChatMessages({ 1: [], 2: [], 3: [] });
+    setShowChat(false);
     setStatus("Initializing...");
     setShowAngleSelection(false);
     setAngleOptions([]);
@@ -166,8 +482,12 @@ export default function StudioPage() {
       formData.append("files", file);
     });
 
+    // Variables to collect data for saving
+    let collectedResearch = "";
+    let collectedScripts: string[] = [];
+    let collectedAngles: ScriptAngle[] = [];
+
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const response = await fetch(`${apiUrl}/generate_stream`, {
         method: "POST",
         body: formData,
@@ -208,12 +528,16 @@ export default function StudioPage() {
                 newBullets.push(trimmed);
               }
 
+              // Collect research for saving
+              collectedResearch = json.data;
+
               setResearchData(prev => {
                 const merged = [...prev, ...newBullets];
                 return Array.from(new Set(merged));
               });
             } else if (json.type === "angles") {
               // Multi-angle: received angle definitions
+              collectedAngles = json.data || [];
               setAngles(json.data || []);
             } else if (json.type === "script_complete") {
               // Multi-angle: individual script completed
@@ -222,12 +546,15 @@ export default function StudioPage() {
               // Handle both old format (string) and new format (object with multiple scripts)
               if (typeof json.data === "string") {
                 setFinalScript(json.data);
+                collectedScripts = [json.data];
               } else if (json.data) {
                 // New multi-angle format
                 if (json.data.scripts && Array.isArray(json.data.scripts)) {
+                  collectedScripts = json.data.scripts;
                   setScripts(json.data.scripts);
                 }
                 if (json.data.angles && Array.isArray(json.data.angles)) {
+                  collectedAngles = json.data.angles;
                   setAngles(json.data.angles);
                 }
                 if (json.data.full_output) {
@@ -262,6 +589,64 @@ export default function StudioPage() {
     } finally {
       setIsGenerating(false);
       setStatus("Complete");
+
+      // Auto-save: Try Supabase first, fallback to localStorage
+      if (collectedScripts.length > 0) {
+        let savedToSupabase = false;
+
+        // Try Supabase first
+        try {
+          const sessionRes = await fetch(`${apiUrl}/sessions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              topic,
+              mode,
+              user_notes: notes,
+              research_data: collectedResearch,
+              skip_research: useOnlyMyContent
+            })
+          });
+
+          if (sessionRes.ok) {
+            const session = await sessionRes.json();
+            setCurrentSessionId(session.id);
+
+            // Only save scripts if we got a real session ID (not local-session)
+            if (session.id && session.id !== "local-session") {
+              // Save all scripts
+              for (let i = 0; i < collectedScripts.length; i++) {
+                const angle = collectedAngles[i] || {};
+                await fetch(`${apiUrl}/sessions/scripts`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    session_id: session.id,
+                    script_number: i + 1,
+                    script_content: collectedScripts[i],
+                    angle_name: angle.name || "",
+                    angle_focus: angle.focus || "",
+                    angle_hook_style: angle.hook_style || ""
+                  })
+                });
+              }
+
+              // Reload sessions list
+              loadSessions();
+              savedToSupabase = true;
+              console.log("[Session] Saved to Supabase:", session.id);
+            }
+          }
+        } catch (e) {
+          console.log("Supabase not available, using localStorage");
+        }
+
+        // Fallback: Save to localStorage if Supabase didn't work
+        if (!savedToSupabase) {
+          saveToLocalHistory(topic, mode, collectedScripts, collectedAngles, collectedResearch);
+          setCurrentSessionId(`local-${Date.now()}`);
+        }
+      }
     }
   };
 
@@ -280,14 +665,14 @@ export default function StudioPage() {
       {/* HEADER */}
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 24px", backgroundColor: "#ffffff", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <div style={{ height: "40px", width: "40px", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", color: "#ffffff", boxShadow: "0 4px 12px rgba(99, 102, 241, 0.3)" }}>
-            <Zap size={22} fill="currentColor" />
+          <div style={{ height: "40px", width: "40px", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", color: "#ffffff", boxShadow: "0 4px 12px rgba(99, 102, 241, 0.3)", fontWeight: "800", fontSize: "18px" }}>
+            S
           </div>
           <div>
             <h1 style={{ fontSize: "20px", fontWeight: "700", color: "#0f172a", lineHeight: "1.2" }}>
-              ScriptAI <span style={{ color: "#94a3b8", fontWeight: "400" }}>Studio</span>
+              SISINTY <span style={{ color: "#94a3b8", fontWeight: "400" }}>Studio</span>
             </h1>
-            <p style={{ fontSize: "10px", fontWeight: "600", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em" }}>Multi-Angle Viral Engine v2.0</p>
+            <p style={{ fontSize: "10px", fontWeight: "600", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em" }}>Multi-Angle Viral Engine</p>
           </div>
         </div>
 
@@ -549,36 +934,159 @@ export default function StudioPage() {
             </div>
           </div>
 
-          {/* COLUMN 2: RESEARCH */}
-          <div style={{ display: "flex", flexDirection: "column", backgroundColor: "#ffffff", borderRadius: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", border: "1px solid #e2e8f0", overflow: "hidden", height: "100%" }}>
-            <div style={{ padding: "16px", borderBottom: "1px solid #f1f5f9", backgroundColor: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <Layers size={18} style={{ color: "#6366f1" }} />
-                <span style={{ fontSize: "14px", fontWeight: "700", color: "#334155" }}>Research Agent</span>
-              </div>
-              <span style={{ fontSize: "12px", fontWeight: "700", backgroundColor: "#eef2ff", color: "#4f46e5", padding: "4px 10px", borderRadius: "6px" }}>{researchData.length} Facts</span>
-            </div>
-
-            <div style={{ flex: 1, padding: "16px", overflowY: "auto", backgroundColor: "#fafbfc" }}>
-              {researchData.length === 0 ? (
-                <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#cbd5e1", gap: "12px" }}>
-                  <div style={{ padding: "16px", backgroundColor: "#f1f5f9", borderRadius: "50%" }}>
-                    <FileText size={24} />
+          {/* COLUMN 2: RESEARCH / CHAT */}
+          <div style={{ display: "flex", flexDirection: "column", backgroundColor: "#ffffff", borderRadius: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", border: "1px solid #e2e8f0", overflow: "hidden", height: "100%", position: "relative" }}>
+            {/* Research Header - Always visible */}
+            {!showChat && (
+              <>
+                <div style={{ padding: "16px", borderBottom: "1px solid #f1f5f9", backgroundColor: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <Layers size={18} style={{ color: "#6366f1" }} />
+                    <span style={{ fontSize: "14px", fontWeight: "700", color: "#334155" }}>Research Agent</span>
                   </div>
-                  <p style={{ fontSize: "14px", fontWeight: "500" }}>Research will stream here...</p>
+                  <span style={{ fontSize: "12px", fontWeight: "700", backgroundColor: "#eef2ff", color: "#4f46e5", padding: "4px 10px", borderRadius: "6px" }}>{researchData.length} Facts</span>
                 </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  {researchData.map((fact, i) => (
-                    <div key={i} style={{ padding: "12px", backgroundColor: "#ffffff", border: "1px solid #f1f5f9", borderRadius: "12px", fontSize: "12px", color: "#475569", lineHeight: "1.6", boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
-                      <span style={{ color: "#6366f1", fontWeight: "700", marginRight: "8px" }}>•</span>
-                      {fact.replace(/^- /, "")}
+
+                <div style={{ flex: 1, padding: "16px", overflowY: "auto", backgroundColor: "#fafbfc" }}>
+                  {researchData.length === 0 ? (
+                    <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#cbd5e1", gap: "12px" }}>
+                      <div style={{ padding: "16px", backgroundColor: "#f1f5f9", borderRadius: "50%" }}>
+                        <FileText size={24} />
+                      </div>
+                      <p style={{ fontSize: "14px", fontWeight: "500" }}>Research will stream here...</p>
                     </div>
-                  ))}
-                  <div ref={researchEndRef} />
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                      {researchData.map((fact, i) => (
+                        <div key={i} style={{ padding: "12px", backgroundColor: "#ffffff", border: "1px solid #f1f5f9", borderRadius: "12px", fontSize: "12px", color: "#475569", lineHeight: "1.6", boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
+                          <span style={{ color: "#6366f1", fontWeight: "700", marginRight: "8px" }}>•</span>
+                          {fact.replace(/^- /, "")}
+                        </div>
+                      ))}
+                      <div ref={researchEndRef} />
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            )}
+
+            {/* Chat Panel - Replaces Research when active */}
+            {showChat && hasMultipleScripts && (
+              <>
+                <div style={{ padding: "16px", borderBottom: "1px solid #f1f5f9", backgroundColor: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <MessageCircle size={18} style={{ color: "#6366f1" }} />
+                    <span style={{ fontSize: "14px", fontWeight: "700", color: "#334155" }}>Edit Script {activeScriptTab + 1}</span>
+                  </div>
+                  <button
+                    onClick={() => setShowChat(false)}
+                    style={{ fontSize: "12px", fontWeight: "600", backgroundColor: "#eef2ff", color: "#4f46e5", padding: "4px 10px", borderRadius: "6px", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
+                  >
+                    <X size={12} /> Close
+                  </button>
+                </div>
+
+                <div style={{ flex: 1, padding: "16px", overflowY: "auto", backgroundColor: "#fafbfc", display: "flex", flexDirection: "column" }}>
+                  {/* Quick suggestions */}
+                  {(chatMessages[activeScriptTab + 1] || []).length === 0 && (
+                    <div style={{ marginBottom: "16px" }}>
+                      <p style={{ fontSize: "11px", fontWeight: "600", color: "#94a3b8", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Quick edits</p>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                        {["Make it shorter", "More engaging hook", "Add statistics", "Fear angle", "Add urgency"].map((suggestion) => (
+                          <button
+                            key={suggestion}
+                            onClick={() => setChatInput(suggestion)}
+                            style={{
+                              padding: "8px 12px",
+                              fontSize: "12px",
+                              color: "#4f46e5",
+                              backgroundColor: "#ffffff",
+                              border: "1px solid #e2e8f0",
+                              borderRadius: "8px",
+                              cursor: "pointer"
+                            }}
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Chat messages */}
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "12px" }}>
+                    {(chatMessages[activeScriptTab + 1] || []).map((msg, idx) => (
+                      <div key={idx} style={{ padding: "12px", backgroundColor: msg.role === "user" ? "#eef2ff" : "#ffffff", border: "1px solid #f1f5f9", borderRadius: "12px", fontSize: "12px", color: "#475569", lineHeight: "1.6", boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
+                        <span style={{ color: msg.role === "user" ? "#4f46e5" : "#16a34a", fontWeight: "700", marginRight: "8px" }}>
+                          {msg.role === "user" ? "You:" : "Claude:"}
+                        </span>
+                        {msg.content.length > 200 ? msg.content.substring(0, 200) + "..." : msg.content}
+                      </div>
+                    ))}
+                    {isChatLoading && (
+                      <div style={{ padding: "12px", backgroundColor: "#ffffff", border: "1px solid #f1f5f9", borderRadius: "12px", fontSize: "12px", color: "#6366f1", display: "flex", alignItems: "center", gap: "8px" }}>
+                        <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+                        Editing script...
+                      </div>
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+                </div>
+
+                {/* Chat input */}
+                <div style={{ padding: "16px", borderTop: "1px solid #f1f5f9", backgroundColor: "#f8fafc", flexShrink: 0 }}>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
+                    <textarea
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          sendChatMessage();
+                        }
+                      }}
+                      placeholder="Tell Claude how to edit... (Shift+Enter for new line)"
+                      rows={Math.min(4, Math.max(1, chatInput.split('\n').length))}
+                      style={{
+                        flex: 1,
+                        padding: "12px 14px",
+                        borderRadius: "10px",
+                        border: "1px solid #e2e8f0",
+                        fontSize: "13px",
+                        outline: "none",
+                        fontFamily: "inherit",
+                        backgroundColor: "#ffffff",
+                        resize: "none",
+                        minHeight: "44px",
+                        maxHeight: "120px",
+                        lineHeight: "1.4"
+                      }}
+                      disabled={isChatLoading}
+                    />
+                    <button
+                      onClick={sendChatMessage}
+                      disabled={!chatInput.trim() || isChatLoading}
+                      style={{
+                        padding: "12px 16px",
+                        borderRadius: "10px",
+                        border: "none",
+                        backgroundColor: chatInput.trim() && !isChatLoading ? "#4f46e5" : "#e2e8f0",
+                        color: chatInput.trim() && !isChatLoading ? "#ffffff" : "#9ca3af",
+                        cursor: chatInput.trim() && !isChatLoading ? "pointer" : "not-allowed",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        fontSize: "13px",
+                        fontWeight: "600",
+                        height: "44px"
+                      }}
+                    >
+                      <Send size={14} />
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* COLUMN 3: OUTPUT WITH TABS */}
@@ -591,35 +1099,29 @@ export default function StudioPage() {
                   <span style={{ fontSize: "14px", fontWeight: "700", color: "#334155" }}>
                     {hasMultipleScripts ? "3 Viral Scripts" : "Final Script"}
                   </span>
-                  {hasMultipleScripts && (
-                    <span style={{ fontSize: "11px", fontWeight: "600", backgroundColor: "#dcfce7", color: "#16a34a", padding: "2px 8px", borderRadius: "4px" }}>
-                      <CheckCircle size={12} style={{ display: "inline", marginRight: "4px", verticalAlign: "middle" }} />
-                      3 Angles
+                  {currentSessionId && (
+                    <span style={{ fontSize: "11px", fontWeight: "600", backgroundColor: "#dcfce7", color: "#16a34a", padding: "4px 10px", borderRadius: "6px", display: "flex", alignItems: "center", gap: "4px" }}>
+                      <CheckCircle size={12} />
+                      Auto-saved
                     </span>
                   )}
                 </div>
                 <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  {saveMessage && (
-                    <span style={{ fontSize: "11px", fontWeight: "600", color: "#16a34a" }}>{saveMessage}</span>
-                  )}
-                  <button
-                    onClick={saveToHistory}
-                    disabled={!displayContent && !finalScript}
-                    style={{ display: "flex", alignItems: "center", gap: "4px", padding: "6px 12px", fontSize: "12px", fontWeight: "700", color: "#16a34a", backgroundColor: "#dcfce7", border: "none", borderRadius: "8px", cursor: "pointer", opacity: (!displayContent && !finalScript) ? 0.5 : 1 }}
-                  >
-                    <BookOpen size={14} /> Save
-                  </button>
                   <button
                     onClick={() => setShowHistory(!showHistory)}
-                    style={{ display: "flex", alignItems: "center", gap: "4px", padding: "6px 12px", fontSize: "12px", fontWeight: "700", color: "#6366f1", backgroundColor: "#eef2ff", border: "none", borderRadius: "8px", cursor: "pointer", position: "relative" }}
+                    style={{ display: "flex", alignItems: "center", gap: "4px", padding: "6px 12px", fontSize: "12px", fontWeight: "700", color: "#6366f1", backgroundColor: "#eef2ff", border: "none", borderRadius: "8px", cursor: "pointer" }}
                   >
                     <Layers size={14} /> History
-                    {scriptHistory.length > 0 && (
-                      <span style={{ position: "absolute", top: "-4px", right: "-4px", backgroundColor: "#ef4444", color: "white", fontSize: "10px", fontWeight: "700", padding: "2px 5px", borderRadius: "10px", minWidth: "16px", textAlign: "center" }}>
-                        {scriptHistory.length}
-                      </span>
-                    )}
                   </button>
+                  {hasMultipleScripts && (
+                    <button
+                      onClick={() => setShowChat(!showChat)}
+                      title="Edit script with AI"
+                      style={{ display: "flex", alignItems: "center", gap: "4px", padding: "6px 12px", fontSize: "12px", fontWeight: "600", color: showChat ? "#ffffff" : "#4f46e5", backgroundColor: showChat ? "#4f46e5" : "#eef2ff", border: "none", borderRadius: "8px", cursor: "pointer" }}
+                    >
+                      <MessageCircle size={14} /> Edit
+                    </button>
+                  )}
                   <button
                     onClick={() => navigator.clipboard.writeText(displayContent || finalScript)}
                     style={{ display: "flex", alignItems: "center", gap: "4px", padding: "6px 12px", fontSize: "12px", fontWeight: "700", color: "#4f46e5", backgroundColor: "transparent", border: "none", borderRadius: "8px", cursor: "pointer" }}
@@ -652,18 +1154,6 @@ export default function StudioPage() {
                       }}
                     >
                       <span>Script {index + 1}</span>
-                      {angles[index] && (
-                        <span style={{
-                          fontSize: "10px",
-                          opacity: 0.8,
-                          maxWidth: "100px",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap"
-                        }}>
-                          {angles[index].name}
-                        </span>
-                      )}
                     </button>
                   ))}
                 </div>
@@ -685,35 +1175,37 @@ export default function StudioPage() {
                   overflow: "hidden"
                 }}>
                   <div style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", backgroundColor: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: "14px", fontWeight: "700", color: "#334155" }}>Script History</span>
+                    <span style={{ fontSize: "14px", fontWeight: "700", color: "#334155" }}>Session History</span>
                     <button onClick={() => setShowHistory(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8" }}>
                       <X size={16} />
                     </button>
                   </div>
                   <div style={{ maxHeight: "340px", overflowY: "auto" }}>
-                    {scriptHistory.length === 0 ? (
+                    {sessions.length === 0 ? (
                       <div style={{ padding: "24px", textAlign: "center", color: "#94a3b8" }}>
-                        <p style={{ fontSize: "13px" }}>No saved scripts yet</p>
-                        <p style={{ fontSize: "11px", marginTop: "4px" }}>Click Save to store scripts here</p>
+                        <p style={{ fontSize: "13px" }}>No sessions yet</p>
+                        <p style={{ fontSize: "11px", marginTop: "4px" }}>Generate scripts to see them here</p>
                       </div>
                     ) : (
-                      scriptHistory.map((entry) => (
-                        <div key={entry.id} style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", cursor: "pointer", transition: "background 0.2s" }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f8fafc"}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#ffffff"}
+                      sessions.map((session) => (
+                        <div key={session.id} style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", cursor: "pointer", transition: "background 0.2s", backgroundColor: session.id === currentSessionId ? "#eef2ff" : "#ffffff" }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = session.id === currentSessionId ? "#eef2ff" : "#f8fafc"}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = session.id === currentSessionId ? "#eef2ff" : "#ffffff"}
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
-                            <div onClick={() => loadFromHistory(entry)} style={{ flex: 1 }}>
+                            <div onClick={() => loadFromHistory(session.id)} style={{ flex: 1 }}>
                               <p style={{ fontSize: "13px", fontWeight: "600", color: "#334155", marginBottom: "4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "250px" }}>
-                                {entry.topic}
+                                {session.topic}
                               </p>
                               <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                                <span style={{ fontSize: "10px", padding: "2px 6px", backgroundColor: "#eef2ff", color: "#4f46e5", borderRadius: "4px" }}>{entry.mode}</span>
-                                <span style={{ fontSize: "10px", color: "#94a3b8" }}>{entry.scripts.length} script{entry.scripts.length > 1 ? "s" : ""}</span>
-                                <span style={{ fontSize: "10px", color: "#94a3b8" }}>{new Date(entry.timestamp).toLocaleDateString()}</span>
+                                <span style={{ fontSize: "10px", padding: "2px 6px", backgroundColor: "#eef2ff", color: "#4f46e5", borderRadius: "4px" }}>{session.mode}</span>
+                                <span style={{ fontSize: "10px", color: "#94a3b8" }}>{new Date(session.created_at).toLocaleDateString()}</span>
+                                {session.id === currentSessionId && (
+                                  <span style={{ fontSize: "10px", padding: "2px 6px", backgroundColor: "#dcfce7", color: "#16a34a", borderRadius: "4px" }}>Current</span>
+                                )}
                               </div>
                             </div>
-                            <button onClick={() => deleteFromHistory(entry.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", padding: "4px" }}>
+                            <button onClick={() => deleteFromHistory(session.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", padding: "4px" }}>
                               <X size={14} />
                             </button>
                           </div>
@@ -725,56 +1217,100 @@ export default function StudioPage() {
               )}
             </div>
 
-            {/* Current angle info */}
-            {currentAngle && (
-              <div style={{
-                padding: "12px 16px",
-                backgroundColor: "#fef3c7",
-                borderBottom: "1px solid #fcd34d",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px"
-              }}>
-                <ChevronRight size={16} style={{ color: "#d97706" }} />
-                <div>
-                  <span style={{ fontSize: "12px", fontWeight: "700", color: "#92400e" }}>
-                    Angle: {currentAngle.name}
-                  </span>
-                  {currentAngle.focus && (
-                    <span style={{ fontSize: "11px", color: "#a16207", marginLeft: "8px" }}>
-                      — {currentAngle.focus}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
+            <div
+              style={{ flex: 1, overflowY: "auto", padding: "24px", backgroundColor: "#ffffff", position: "relative" }}
+              onMouseUp={handleTextSelection}
+            >
+              {/* Selection Popup - Edit with Claude */}
+              {selectionPopup.show && (
+                <button
+                  className="selection-popup"
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    editSelectedText();
+                  }}
+                  style={{
+                    position: "fixed",
+                    left: selectionPopup.x,
+                    top: selectionPopup.y,
+                    transform: "translate(-50%, -100%)",
+                    backgroundColor: "#1e293b",
+                    color: "white",
+                    padding: "8px 14px",
+                    borderRadius: "8px",
+                    fontSize: "13px",
+                    fontWeight: "600",
+                    fontFamily: "inherit",
+                    cursor: "pointer",
+                    zIndex: 1000,
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    whiteSpace: "nowrap",
+                    border: "none",
+                    outline: "none"
+                  }}
+                >
+                  <MessageCircle size={14} />
+                  Edit with Claude
+                </button>
+              )}
 
-            <div style={{ flex: 1, overflowY: "auto", padding: "24px", backgroundColor: "#ffffff" }}>
               {displayContent ? (
-                <div style={{ maxWidth: "none", color: "#334155", lineHeight: "1.9", fontSize: "14px" }}>
-                  <ReactMarkdown
-                    components={{
-                      h1: ({ children }) => (
-                        <h1 style={{ fontSize: "18px", fontWeight: "700", color: "#0f172a", marginBottom: "16px", paddingBottom: "8px", borderBottom: "2px solid #e2e8f0" }}>{children}</h1>
-                      ),
-                      h2: ({ children }) => (
-                        <h2 style={{ fontSize: "16px", fontWeight: "700", color: "#1e293b", marginTop: "24px", marginBottom: "12px" }}>{children}</h2>
-                      ),
-                      h3: ({ children }) => (
-                        <h3 style={{ fontSize: "14px", fontWeight: "700", color: "#334155", marginTop: "20px", marginBottom: "8px" }}>{children}</h3>
-                      ),
-                      p: ({ children }) => (
-                        <p style={{ marginBottom: "12px", lineHeight: "1.8" }}>{children}</p>
-                      ),
-                      strong: ({ children }) => (
-                        <strong style={{ fontWeight: "700", color: "#0f172a" }}>{children}</strong>
-                      ),
-                      hr: () => (
-                        <hr style={{ border: "none", borderTop: "2px solid #e2e8f0", margin: "24px 0" }} />
-                      ),
-                    }}
-                  >{displayContent}</ReactMarkdown>
-                </div>
+                <>
+                  <div style={{ maxWidth: "none", color: "#334155", lineHeight: "1.9", fontSize: "14px" }}>
+                    <ReactMarkdown
+                      components={{
+                        h1: ({ children }) => (
+                          <h1 style={{ fontSize: "18px", fontWeight: "700", color: "#0f172a", marginBottom: "16px", paddingBottom: "8px", borderBottom: "2px solid #e2e8f0" }}>{children}</h1>
+                        ),
+                        h2: ({ children }) => (
+                          <h2 style={{ fontSize: "16px", fontWeight: "700", color: "#1e293b", marginTop: "24px", marginBottom: "12px" }}>{children}</h2>
+                        ),
+                        h3: ({ children }) => (
+                          <h3 style={{ fontSize: "14px", fontWeight: "700", color: "#334155", marginTop: "20px", marginBottom: "8px" }}>{children}</h3>
+                        ),
+                        p: ({ children }) => (
+                          <p style={{ marginBottom: "12px", lineHeight: "1.8" }}>{children}</p>
+                        ),
+                        strong: ({ children }) => (
+                          <strong style={{ fontWeight: "700", color: "#0f172a" }}>{children}</strong>
+                        ),
+                        hr: () => (
+                          <hr style={{ border: "none", borderTop: "2px solid #e2e8f0", margin: "24px 0" }} />
+                        ),
+                      }}
+                    >{displayContent}</ReactMarkdown>
+                  </div>
+                  {/* Angle info - shown at the end of script */}
+                  {currentAngle && (
+                    <div style={{
+                      marginTop: "24px",
+                      padding: "12px 16px",
+                      backgroundColor: "#f8fafc",
+                      borderRadius: "8px",
+                      border: "1px solid #e2e8f0",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px"
+                    }}>
+                      <ChevronRight size={16} style={{ color: "#6366f1" }} />
+                      <div>
+                        <span style={{ fontSize: "12px", fontWeight: "700", color: "#4f46e5" }}>
+                          Angle: {currentAngle.name}
+                        </span>
+                        {currentAngle.focus && (
+                          <span style={{ fontSize: "11px", color: "#64748b", marginLeft: "8px" }}>
+                            — {currentAngle.focus}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : finalScript ? (
                 <div style={{ maxWidth: "none", color: "#334155", lineHeight: "1.9", fontSize: "14px" }}>
                   <ReactMarkdown
@@ -814,6 +1350,14 @@ export default function StudioPage() {
 
         </div>
       </div>
+
+      {/* CSS Animation for loading spinner */}
+      <style jsx global>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
