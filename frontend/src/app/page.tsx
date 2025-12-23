@@ -57,7 +57,9 @@ export default function StudioPage() {
   const [useOnlyMyContent, setUseOnlyMyContent] = useState(false);
 
   const [isGenerating, setIsGenerating] = useState(false);
-  const [status, setStatus] = useState("Ready");
+  const [status, setStatus] = useState("Connecting...");
+  const [backendReady, setBackendReady] = useState(false);
+  const [backendConnecting, setBackendConnecting] = useState(true);
 
   const [researchData, setResearchData] = useState<string[]>([]);
   const [finalScript, setFinalScript] = useState("");
@@ -89,6 +91,38 @@ export default function StudioPage() {
 
   const researchEndRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Check backend health on mount
+  useEffect(() => {
+    let retryCount = 0;
+    const maxRetries = 10;
+
+    const checkBackend = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/`);
+        if (response.ok) {
+          setBackendReady(true);
+          setBackendConnecting(false);
+          setStatus("Ready to generate");
+        } else {
+          setBackendConnecting(false);
+          setStatus("Backend error - try refreshing");
+        }
+      } catch (e) {
+        retryCount++;
+        if (retryCount < maxRetries) {
+          setBackendConnecting(true);
+          setStatus(`Connecting to backend (${retryCount}/${maxRetries})...`);
+          // Retry after 3 seconds
+          setTimeout(checkBackend, 3000);
+        } else {
+          setBackendConnecting(false);
+          setStatus("Backend offline - start server");
+        }
+      }
+    };
+    checkBackend();
+  }, [apiUrl]);
 
   // Load sessions from Supabase AND localStorage on mount
   useEffect(() => {
@@ -284,7 +318,7 @@ export default function StudioPage() {
 
             setChatMessages({ 1: [], 2: [], 3: [] });
             setShowHistory(false);
-            setStatus("Session loaded (local)");
+            setStatus("Loaded from history");
             return;
           }
         }
@@ -328,7 +362,7 @@ export default function StudioPage() {
       }
 
       setShowHistory(false);
-      setStatus("Session loaded");
+      setStatus("Loaded from history");
     } catch (e) {
       console.error("Failed to load session", e);
       alert("Failed to load session");
@@ -466,7 +500,7 @@ export default function StudioPage() {
     setResearchData([]);
     setChatMessages({ 1: [], 2: [], 3: [] });
     setShowChat(false);
-    setStatus("Initializing...");
+    setStatus("Starting script generation...");
     setShowAngleSelection(false);
     setAngleOptions([]);
     setAngleMessage("");
@@ -541,7 +575,7 @@ export default function StudioPage() {
               setAngles(json.data || []);
             } else if (json.type === "script_complete") {
               // Multi-angle: individual script completed
-              setStatus(`Completed Script ${json.script_number}: ${json.angle_name}`);
+              setStatus(`Script ${json.script_number}/3 done`);
             } else if (json.type === "result") {
               // Handle both old format (string) and new format (object with multiple scripts)
               if (typeof json.data === "string") {
@@ -572,7 +606,7 @@ export default function StudioPage() {
                 setAngleOptions(json.options || []);
                 setShowAngleSelection(true);
                 setIsGenerating(false);
-                setStatus("Select an angle to continue");
+                setStatus("Choose an angle");
               }
             } else if (json.type === "error") {
               alert("Error: " + json.message);
@@ -585,10 +619,10 @@ export default function StudioPage() {
       }
     } catch (error) {
       console.error(error);
-      setStatus("Connection Failed");
+      setStatus("Connection failed - check backend");
     } finally {
       setIsGenerating(false);
-      setStatus("Complete");
+      setStatus("Done - 3 scripts ready");
 
       // Auto-save: Try Supabase first, fallback to localStorage
       if (collectedScripts.length > 0) {
@@ -688,22 +722,22 @@ export default function StudioPage() {
             gap: "10px",
             padding: "8px 18px",
             borderRadius: "24px",
-            border: isGenerating ? "2px solid #4f46e5" : "1px solid #e2e8f0",
+            border: isGenerating ? "2px solid #4f46e5" : backendConnecting ? "2px solid #f59e0b" : !backendReady ? "2px solid #ef4444" : "1px solid #e2e8f0",
             fontSize: "13px",
             fontWeight: "700",
             letterSpacing: "0.02em",
-            backgroundColor: isGenerating ? "#eef2ff" : "#ffffff",
-            color: isGenerating ? "#4f46e5" : "#64748b",
-            boxShadow: isGenerating ? "0 0 12px rgba(79, 70, 229, 0.25)" : "none",
+            backgroundColor: isGenerating ? "#eef2ff" : backendConnecting ? "#fffbeb" : !backendReady ? "#fef2f2" : "#ffffff",
+            color: isGenerating ? "#4f46e5" : backendConnecting ? "#d97706" : !backendReady ? "#dc2626" : "#16a34a",
+            boxShadow: isGenerating ? "0 0 12px rgba(79, 70, 229, 0.25)" : backendConnecting ? "0 0 12px rgba(245, 158, 11, 0.4)" : "none",
             transition: "all 0.3s ease"
           }}>
-            {isGenerating && (
+            {(isGenerating || backendConnecting) && (
               <span style={{
                 width: "10px",
                 height: "10px",
                 borderRadius: "50%",
-                backgroundColor: "#4f46e5",
-                boxShadow: "0 0 8px rgba(79, 70, 229, 0.6)",
+                backgroundColor: isGenerating ? "#4f46e5" : "#f59e0b",
+                boxShadow: isGenerating ? "0 0 8px rgba(79, 70, 229, 0.6)" : "0 0 8px rgba(245, 158, 11, 0.6)",
                 animation: "pulse 1.2s ease-in-out infinite"
               }}></span>
             )}
@@ -797,7 +831,7 @@ export default function StudioPage() {
             <button
               onClick={() => {
                 setShowAngleSelection(false);
-                setStatus("Ready");
+                setStatus("Ready to generate");
               }}
               style={{
                 marginTop: "24px",
@@ -924,11 +958,11 @@ export default function StudioPage() {
               <div style={{ marginTop: "auto", paddingTop: "16px" }}>
                 <button
                   onClick={handleGenerate}
-                  disabled={isGenerating}
+                  disabled={isGenerating || !backendReady}
                   data-generate-btn
-                  style={{ width: "100%", padding: "16px", borderRadius: "12px", fontSize: "14px", fontWeight: "700", color: "#ffffff", backgroundColor: isGenerating ? "#94a3b8" : "#4f46e5", border: "none", cursor: isGenerating ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", boxShadow: isGenerating ? "none" : "0 4px 12px rgba(79, 70, 229, 0.3)", transition: "all 0.2s" }}
+                  style={{ width: "100%", padding: "16px", borderRadius: "12px", fontSize: "14px", fontWeight: "700", color: "#ffffff", backgroundColor: (isGenerating || !backendReady) ? "#94a3b8" : "#4f46e5", border: "none", cursor: (isGenerating || !backendReady) ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", boxShadow: (isGenerating || !backendReady) ? "none" : "0 4px 12px rgba(79, 70, 229, 0.3)", transition: "all 0.2s" }}
                 >
-                  {isGenerating ? "Generating 3 Scripts..." : <><Send size={18} /> Generate 3 Viral Scripts</>}
+                  {!backendReady ? "Waiting for Backend..." : isGenerating ? "Generating 3 Scripts..." : <><Send size={18} /> Generate 3 Viral Scripts</>}
                 </button>
               </div>
             </div>
