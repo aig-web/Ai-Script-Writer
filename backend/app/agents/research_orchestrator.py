@@ -26,7 +26,7 @@ class ResearchOrchestrator:
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             openai_api_base="https://openrouter.ai/api/v1",
             temperature=0.3,
-            max_tokens=4000
+            max_tokens=8000  # Increased for exhaustive research output
         )
 
         self.selector_llm = ChatOpenAI(
@@ -34,7 +34,7 @@ class ResearchOrchestrator:
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             openai_api_base="https://openrouter.ai/api/v1",
             temperature=0.2,
-            max_tokens=2000
+            max_tokens=6000  # Increased to preserve all research data
         )
 
     async def research(self, topic: str, user_notes: str = "", file_content: str = "", status_callback=None) -> Dict:
@@ -446,7 +446,7 @@ Rate each angle on:
         angle = selected_angle.get('angle', selected_angle.get('topic', ''))
 
         deep_dive_prompt = f"""
-You are doing a DEEP DIVE research on ONE specific angle for a viral Instagram Reel.
+You are doing an EXHAUSTIVE DEEP DIVE research on ONE specific angle for a viral Instagram Reel.
 
 ## THE SELECTED ANGLE:
 
@@ -454,146 +454,222 @@ You are doing a DEEP DIVE research on ONE specific angle for a viral Instagram R
 
 ## YOUR MISSION
 
-Find EVERYTHING needed to write a compelling 45-60 second script on this SPECIFIC angle.
+Find EVERYTHING - gather 80-120+ individual facts, data points, quotes, and insights. The scriptwriter needs ABUNDANT raw material to choose from. Don't summarize - collect EVERYTHING you can find.
 
-## CRITICAL: WHAT MAKES VIRAL SCRIPTS DIFFERENT
+## CRITICAL: QUANTITY MATTERS
 
-Human-written viral scripts have these elements that AI usually misses:
+Previous research gave only 15-25 facts. That's NOT ENOUGH. We need:
+- 30-50 specific numbers/statistics
+- 15-20 direct quotes from different people
+- 20-30 surprising/hook-worthy facts
+- 10-15 comparison/contrast points
+- 10-15 India-specific data points
+- Multiple timelines and historical context points
 
-1. **CONTEXT/BACKSTORY (WHY NOW?)** - What event triggered this? Why is this happening NOW?
-   - Example: "Since Russia invaded Ukraine, Germany changed defense strategy"
-   - NOT: Just jumping to "Company X raised $Y"
+## WHAT TO SEARCH FOR (Be exhaustive):
 
-2. **BEFORE/AFTER NUMBERS** - Show the CHANGE, not just a number
-   - Example: "373M → 1B = 170% increase in 2 years"
-   - NOT: "They raised €13 million"
+### 1. NUMBERS & STATISTICS (Find 30-50 different numbers)
+Search for and list EVERY number you can find:
+- Revenue figures (current, historical, projected)
+- User counts / customer counts
+- Market size (current, projected 2025, 2030)
+- Growth rates (YoY, MoM, total)
+- Funding amounts (all rounds)
+- Valuations (current, previous)
+- Employee counts
+- Cost savings / efficiency gains
+- Speed improvements
+- Percentage changes
+- Rankings and positions
+- Comparisons to competitors
+- Time durations (how long things took)
+- Prices and costs
+- Investment amounts
+- Any other quantifiable data
 
-3. **CONTRAST DATA** - Traditional/Old vs New approach
-   - Example: "Traditional drones: cost thousands, need maintenance, break. Cockroaches: operate in darkness, don't need GPS"
-   - NOT: Just listing features
+### 2. DIRECT QUOTES (Find 15-20 quotes)
+Search for quotes from:
+- The CEO/Founder
+- Other executives
+- Investors
+- Industry analysts
+- Competitors
+- Customers/Users
+- Media commentators
+- Government officials (if relevant)
+- Researchers/Experts
 
-4. **ESCALATION DATA** - Small → Big implications
-   - Example: Company ($13M) → Industry ($175B) → Global ("Every military will want this")
-   - NOT: Staying at company level only
+### 3. HOOK-WORTHY FACTS (Find 20-30 surprising facts)
+- Counter-intuitive facts
+- "Most people don't know..." facts
+- Failure/comeback stories
+- Secret strategies revealed
+- Behind-the-scenes insights
+- Controversial decisions
+- Unexpected connections
+- Timing coincidences
+- David vs Goliath moments
+- First-ever achievements
+- Record-breaking stats
 
-## WHAT TO SEARCH FOR:
+### 4. BACKSTORY & CONTEXT (Find 10-15 context points)
+- What triggered this?
+- What was happening before?
+- Why now specifically?
+- What failed attempts preceded this?
+- What crisis/opportunity drove this?
+- Historical parallels
+- Industry shifts that enabled this
 
-### 1. THE BACKSTORY/CONTEXT (CRITICAL - MOST SCRIPTS MISS THIS)
-   - What TRIGGERED this? What event, policy, or crisis made this happen?
-   - What was the world/industry like BEFORE this?
-   - Why is this company/person doing this NOW vs 2 years ago?
-   - What changed in the market/geopolitics/technology?
+### 5. COMPARISONS & CONTRASTS (Find 10-15 comparisons)
+- Old way vs new way
+- This company vs competitors
+- Before vs after
+- Expected vs actual
+- Industry average vs this company
+- Cost comparisons
+- Speed comparisons
+- Quality comparisons
 
-   SEARCH FOR: "[topic] why now", "[topic] triggered by", "[topic] after [event]", "[topic] in response to"
+### 6. INDIA-SPECIFIC DATA (Only if naturally relevant)
+NOTE: Only include India angle if there's a GENUINE connection:
+- Indian founders/investors directly involved
+- Direct impact on Indian users/market
+- Indian company competing or partnering
+- Significant pricing/accessibility angle for India
+DO NOT force India angle if there's no natural connection.
+If relevant, find:
+- Indian market size
+- Indian user numbers
+- Pricing in INR (₹)
+- Indian competitors
+- Indian employees/offices
 
-### 2. BEFORE/AFTER NUMBERS (Not just standalone numbers)
-   - What was the number BEFORE? What is it NOW?
-   - Calculate the percentage change
-   - Find industry-level numbers, not just company-level
-   - Find budget/funding trajectory over time
+### 7. PEOPLE PROFILES (Multiple people, not just one)
+For EACH key person involved, find:
+- Full name and current title
+- Previous roles/companies
+- Education background
+- Notable achievements
+- Age (if public)
+- Net worth (if relevant)
+- Specific quotes
 
-   SEARCH FOR: "[industry] investment 2022 vs 2024", "[topic] growth rate", "[topic] market size change"
+### 8. TIMELINE & MILESTONES (Find 10-15 dates)
+- Founding date
+- Key product launches
+- Funding rounds dates
+- Major announcements
+- Pivot points
+- Crisis moments
+- Recovery milestones
+- Future planned dates
 
-### 3. CONTRAST DATA (Old Way vs New Way)
-   - What's the traditional/old approach?
-   - What are its PROBLEMS? (cost, maintenance, limitations)
-   - How does the new approach solve these?
-   - What can the new do that old CAN'T?
+### 9. CONTROVERSY & DRAMA (Find 5-10 dramatic elements)
+- Conflicts with competitors
+- Internal drama
+- Public criticism
+- Regulatory issues
+- Failed products/features
+- Leadership changes
+- Lawsuits or legal issues
 
-   SEARCH FOR: "[new thing] vs traditional", "[old approach] problems", "[new approach] advantages"
+### 10. FUTURE PREDICTIONS (Find 5-10 predictions)
+- Expert predictions
+- Company roadmap
+- Industry forecasts
+- Analyst expectations
+- Potential risks
+- Growth projections
 
-### 4. ESCALATION DATA (Small → Medium → Big)
-   - Company-level stat (funding, revenue, etc.)
-   - Industry-level stat (market size, total investment)
-   - Global implication (who else will want this, future predictions)
+---
 
-   SEARCH FOR: "[industry] market size 2029", "[topic] global adoption", "[topic] future predictions"
+## OUTPUT FORMAT (Be exhaustive - aim for 3000+ words of raw research)
 
-### 5. THE KEY PERSON
-   - Full background (education, previous roles, achievements)
-   - Recent quotes (exact words in quotation marks)
-   - The specific action/announcement they made
+### RAW NUMBERS & STATISTICS (List 30-50)
+1. [Number] - [What it represents] - [Source/Context]
+2. [Number] - [What it represents] - [Source/Context]
+3. ...
+(Continue until you have 30-50 different numbers)
 
-### 6. DIRECT QUOTES
-   - Find 2-3 exact quotes from the key person
-   - Find 1 quote about why this matters/what changed
+### DIRECT QUOTES (List 15-20)
+1. "[Exact quote]" — [Person Name], [Title], [Context/When said]
+2. "[Exact quote]" — [Person Name], [Title], [Context/When said]
+3. ...
+(Continue until you have 15-20 different quotes)
 
-## OUTPUT FORMAT
+### HOOK-WORTHY FACTS (List 20-30)
+1. [Surprising fact with specific detail]
+2. [Counter-intuitive insight]
+3. ...
+(Continue until you have 20-30 facts)
 
-### BACKSTORY/CONTEXT (WHY NOW?) - CRITICAL
+### BACKSTORY & CONTEXT
+- **Origin Story:** [How this started - detailed]
+- **Trigger Event:** [What made this happen now]
+- **Before State:** [What was the situation before]
+- **Key Turning Points:** [List 3-5 pivotal moments]
+- **Timeline:**
+  - [Date]: [Event]
+  - [Date]: [Event]
+  - (List 10+ timeline entries)
 
-**The Trigger Event:** [What event/crisis/change triggered this?]
-**What Changed:** [What was different before? What shifted?]
-**Timeline:** [When did the trigger happen? When did the response start?]
-**Search Queries Used:** [List queries that found this context]
+### COMPARISON DATA
 
-Example format:
-"Since [TRIGGER EVENT] in [DATE], [THING] changed. Before this, [OLD STATE]. Now, [NEW STATE]. This is why [COMPANY/PERSON] is [ACTION]."
+**VS COMPETITORS:**
+| Metric | This Company | Competitor 1 | Competitor 2 | Industry Avg |
+|--------|--------------|--------------|--------------|--------------|
+| [Metric] | [Value] | [Value] | [Value] | [Value] |
+(Include 5-10 comparison rows)
 
-### BEFORE/AFTER NUMBERS - CRITICAL
+**OLD VS NEW:**
+| Aspect | Old Way | New Way | Improvement |
+|--------|---------|---------|-------------|
+| [Aspect] | [Old] | [New] | [X% better] |
+(Include 5-10 rows)
 
-| Metric | BEFORE | AFTER | CHANGE | TIME PERIOD |
-|--------|--------|-------|--------|-------------|
-| [Metric 1] | [Old number] | [New number] | [X% increase/Xx bigger] | [Years] |
-| [Metric 2] | [Old number] | [New number] | [X% increase/Xx bigger] | [Years] |
-| [Metric 3] | [Old number] | [New number] | [X% increase/Xx bigger] | [Years] |
+### KEY PEOPLE PROFILES
 
-### CONTRAST DATA (OLD VS NEW) - CRITICAL
+**Person 1: [Name]**
+- Title: [Current position]
+- Background: [Education, previous roles]
+- Key Achievement: [Notable accomplishment]
+- Quotes: "[Quote 1]", "[Quote 2]"
 
-**THE OLD WAY:**
-| Aspect | Traditional Approach | Problem/Limitation |
-|--------|---------------------|-------------------|
-| Cost | [Specific amount] | [Why it's a problem] |
-| Maintenance | [What's required] | [Why it's a problem] |
-| Capability | [What it can do] | [What it CAN'T do] |
+**Person 2: [Name]**
+- Title: [Current position]
+- Background: [Education, previous roles]
+- Key Achievement: [Notable accomplishment]
+- Quotes: "[Quote 1]", "[Quote 2]"
 
-**THE NEW WAY:**
-| Aspect | New Approach | Advantage |
-|--------|-------------|-----------|
-| Cost | [Specific amount] | [Comparison to old] |
-| Maintenance | [What's required] | [Why it's better] |
-| Capability | [What it can do] | [What old CAN'T do] |
+(Profile 3-5 different people)
 
-**One-liner contrast:** "[Old] costs [X], needs [Y], breaks. [New]? [Advantage 1]. [Advantage 2]. [Advantage 3]."
+### INDIA ANGLE (Only if naturally relevant)
+NOTE: Only include if there's a genuine India connection. Leave section empty if no natural connection.
+If relevant:
+- **Market Size in India:** [₹ amount]
+- **Indian Users/Customers:** [Number]
+- **Indian Pricing:** [₹ prices]
+- **Indian Competitors:** [List with comparisons]
 
-### ESCALATION DATA (SMALL → BIG) - CRITICAL
+### CONTROVERSY & DRAMA
+1. [Drama point 1 with details]
+2. [Drama point 2 with details]
+(List all controversial/dramatic elements)
 
-| Level | Stat | Implication |
-|-------|------|-------------|
-| COMPANY | [Company-level number] | [What this means] |
-| INDUSTRY | [Industry-level number] | [What this means] |
-| GLOBAL | [Global projection/implication] | [Future prediction] |
+### FUTURE & PREDICTIONS
+1. [Prediction 1] - [Source/Expert]
+2. [Prediction 2] - [Source/Expert]
+(List 5-10 predictions)
 
-**Escalation narrative:** "This company raised [X]. But the industry is now [Y]. And [global implication - who else will want this]."
+### SOURCES (List all sources found)
+1. [Source 1] - [Type: News/Interview/Report/Study]
+2. [Source 2] - [Type]
+(List 10+ sources)
 
-### KEY PERSON PROFILE
+---
 
-| Field | Detail |
-|-------|--------|
-| Name | [Full name] |
-| Title | [Current position] |
-| Company | [Organization] |
-| Background | [1-2 line credentials] |
-| The Action | [What they specifically did] |
-| When | [Exact date if possible] |
-
-### DIRECT QUOTES (Exact words only)
-
-1. "[Quote 1]" - [Person], [Context]
-2. "[Quote 2]" - [Person], [Context]
-3. "[Quote 3]" - [Person], [Context]
-
-### INDIA ANGLE
-
-- **Direct Impact:** [How this affects Indians]
-- **Cost Context:** [Pricing in Rs.]
-- **Opportunity:** [What Indians can do with this]
-
-### SOURCES
-
-1. [Source 1 - Type: News/Interview/Report]
-2. [Source 2 - Type: News/Interview/Report]
-3. [Source 3 - Type: News/Interview/Report]
+REMEMBER: The goal is QUANTITY. Give the scriptwriter 80-120+ individual facts to choose from. Don't summarize or condense - list everything you find.
 """
 
         response = await self.llm.ainvoke(deep_dive_prompt)
@@ -601,14 +677,14 @@ Example format:
 
     async def _stage_connect(self, deep_research: Dict, selected_angle: Dict) -> str:
         """
-        Stage 4: CONNECT - Build narrative connections between facts.
-        This ensures the script will flow naturally from one point to the next.
+        Stage 4: CONNECT - Organize facts into categories while PRESERVING ALL DATA.
+        Don't condense - keep all 80-120+ facts organized for the scriptwriter.
         """
 
         connect_prompt = f"""
 You are a narrative architect. Organize research facts into a connected story flow.
 
-## THE RESEARCH:
+## THE RAW RESEARCH (KEEP ALL OF IT):
 
 {deep_research['raw_research']}
 
@@ -616,68 +692,109 @@ You are a narrative architect. Organize research facts into a connected story fl
 
 {selected_angle['raw_selection']}
 
-## KEY PRINCIPLES (Apply flexibly)
+## KEY PRINCIPLES (v8.3)
 
 1. **CONTEXT FIRST** - Explain WHY this is happening before WHAT happened
 2. **NUMBERS WITH MEANING** - Show before→after, not standalone numbers
 3. **CONTRAST** - Compare old way vs new way when applicable
 4. **ESCALATION** - Zoom from company → industry → global
-5. **SHARP INSIGHT** - Specific business reframe, not generic philosophy
+5. **HOOKS THROUGHOUT** - Add curiosity triggers between major points (not just opening)
+6. **LAYMAN LANGUAGE** - No jargon without explanation. Would a non-tech friend understand?
+7. **PERSPECTIVE** - Not Wikipedia. Have opinions. Take a stance.
+8. **INDIA ANGLE - ONLY IF NATURAL** - Don't force it. Only include if genuine connection.
 
-## ORGANIZE THE RESEARCH INTO:
+## OUTPUT FORMAT (Preserve all data, add organization)
 
-**HOOK OPTIONS (3 variations):**
-- One using "While everyone's focused on X, Y quietly happened..."
-- One using person/company + unexpected action
-- One with India angle if applicable
+**TOP 10 HOOK OPTIONS:**
+Create 10 different hook variations:
+1. [Shocking number hook] - "[Number] + [unexpected context]"
+2. [Person-action hook] - "[Person] just [unexpected action]"
+3. [While everyone hook] - "While everyone's focused on X, Y quietly..."
+4. [Most people don't know hook] - "Most people don't know that..."
+5. [India angle hook] - ONLY if natural connection exists, otherwise skip
+6. [Controversy hook] - Drama/conflict angle
+7. [Underdog hook] - David vs Goliath angle
+8. [Secret revealed hook] - "Here's what [company] doesn't tell you..."
+9. [Timeline hook] - "In just X days/months, [achievement]"
+10. [Comparison hook] - "[Thing A] costs X. [Thing B]? Just Y."
+
+**MID-SCRIPT RETENTION TRIGGERS:**
+Phrases to use BETWEEN major points to keep viewers watching:
+- "But here's where it gets interesting..."
+- "And then they discovered something nobody expected."
+- "That's not even the crazy part."
+- "But there's a problem nobody's talking about."
+- "Here's what the headlines missed."
+
+**ALL NUMBERS & STATISTICS (Keep all):**
+[Copy ALL numbers from research, organized by category]
+- Financial: [List all financial numbers]
+- Users/Growth: [List all user/growth numbers]
+- Comparisons: [List all comparison numbers]
+- Timeline: [List all dates/durations]
+
+**ALL QUOTES (Keep all):**
+[Copy ALL quotes from research]
+
+**ALL HOOK-WORTHY FACTS (Keep all):**
+[Copy ALL surprising facts from research]
 
 **CONTEXT/BACKSTORY:**
 What triggered this? Why is this happening NOW?
 
-**NUMBERS WITH CONTEXT:**
+**NUMBERS WITH CONTEXT (Layman-friendly):**
 Before → After with percentage change or comparison
+Technical → Layman translation (e.g., "99% fuel efficiency" → "Uses almost all its fuel instead of wasting 99%")
 
-**THE STORY:**
-Who did what, explained simply
+**ALL COMPARISON DATA (Keep all):**
+[Copy ALL comparison tables and data]
 
-**CONTRAST (if applicable):**
-Old approach problems vs new approach advantages
+**ALL PEOPLE PROFILES (Keep all):**
+[Copy ALL person profiles with their quotes]
 
-**ESCALATION:**
+**CONTROVERSY & DRAMA:**
+[Copy all dramatic/controversial elements]
+
+**FUTURE PREDICTIONS:**
+[Copy all predictions]
+
+**THE CORE STORY:**
+Who did what, explained simply (2-3 paragraphs) - LAYMAN LANGUAGE
+
+**ESCALATION NARRATIVE:**
 Company stat → Industry stat → Global implication
 
-**INSIGHT:**
-Sharp, specific reframe (not generic "this changes everything")
+**PERSPECTIVE/OPINION:**
+A summary says: "[Neutral statement about what happened]"
+A perspective says: "[Opinionated take with stance]"
+Provide 3 perspective options the scriptwriter can use.
 
-**INDIA ANGLE:**
-How this affects Indian audience (with Rs. if applicable)
+**INSIGHT OPTIONS (Give 5 different insights):**
+1. [Business insight with perspective]
+2. [Technology insight with perspective]
+3. [Market insight with perspective]
+4. [Contrarian insight - what everyone's missing]
+5. [Future-focused insight with perspective]
 
-**OPEN QUESTION:**
-Genuine question that prompts thought
-- "Would you invest in this kind of technology?"
-- "The question is: Will [category] survive this?"
+**INDIA ANGLE (Only if natural connection):**
+If there's a NATURAL India connection (Indian founders, Indian market impact, ₹ pricing):
+[Include India-specific data]
+If NO natural connection, write: "No natural India angle - skip in script"
 
-## OUTPUT FORMAT
+**ENGAGEMENT QUESTIONS (Give 5 options):**
+Real questions that prompt thought - NOT "what do you think?" (that's lazy)
+1. [Question about implications or choices]
+2. [Would you invest/use this?]
+3. [Will [category] survive this?]
+4. [Controversial question]
+5. [Future prediction question]
 
-Provide the organized research in these sections (be flexible with format):
+**ALL SOURCES:**
+[Copy all sources]
 
-**HOOK OPTIONS:** 3 different hook angles
+---
 
-**CONTEXT:** The backstory/trigger
-
-**NUMBERS:** Key stats with context
-
-**THE STORY:** Core narrative
-
-**CONTRAST:** Old vs new (if applicable)
-
-**ESCALATION:** Bigger picture stats
-
-**INSIGHT:** Sharp reframe
-
-**INDIA ANGLE:** Local relevance
-
-**QUESTION:** Engagement prompt
+CRITICAL: Your output should be 2000-3000 words minimum. Do NOT condense the research. The scriptwriter needs ALL the raw material. Use LAYMAN LANGUAGE throughout.
 """
 
         response = await self.selector_llm.ainvoke(connect_prompt)
@@ -711,52 +828,33 @@ Provide the organized research in these sections (be flexible with format):
 
     async def _process_user_content(self, topic: str, content: str, user_notes: str) -> Dict:
         """
-        Process user-uploaded PDF/file content.
-        Extract the STORY, not fragments. This fixes the word-fragment issue.
+        Process user-uploaded PDF/file content + do additional Perplexity research.
+        NO LIMITS - extract EVERYTHING from user's document, then add Perplexity on top.
         """
 
-        extract_prompt = f"""
-You're a researcher preparing content for a viral Instagram Reel script.
+        print(f"[Research] Processing user content + Perplexity research for: {topic}")
+        print(f"[Research] Document size: {len(content)} characters")
 
-The user uploaded a document about: {topic}
+        # STEP 1: Extract EVERYTHING from user's document - NO LIMITS
+        # Split into chunks if document is very large to process all of it
+        doc_chunks = []
+        chunk_size = 15000  # Process in chunks
+        for i in range(0, len(content), chunk_size):
+            doc_chunks.append(content[i:i + chunk_size])
 
-Your job: Extract the STORY from this content. Not fragments. Not bullet points. The narrative.
+        print(f"[Research] Processing {len(doc_chunks)} chunk(s) from document")
 
-## WHAT TO EXTRACT
+        all_doc_facts = []
 
-**The Core Story:**
-What happened? Who did it? Why does it matter?
-Write this as a flowing paragraph, not bullets.
+        for chunk_idx, chunk in enumerate(doc_chunks):
+            extract_prompt = f"""
+You are extracting ALL research data from a user-uploaded document for a viral Instagram Reel.
 
-**The Trigger (Why Now):**
-What event or milestone made this newsworthy?
-When did it happen?
+## TOPIC: {topic}
 
-**The Key Numbers (With Context):**
-Don't just list numbers. Explain what they mean.
-Bad: "99% fuel efficiency"
-Good: "Traditional reactors waste 99% of their fuel. This one uses almost everything."
+## DOCUMENT CONTENT (Part {chunk_idx + 1} of {len(doc_chunks)}):
 
-**The Contrast (Old vs New):**
-What was the old way? What's broken about it?
-What's the new way? Why is it better?
-
-**The Bigger Picture:**
-Why should anyone care? What does this mean for the world?
-
-**Quotable Moments:**
-Any statements from people involved that we can quote?
-
-**The Controversy/Tension (if any):**
-Is there debate? Opposition? Risk? Drama?
-
----
-
-## DOCUMENT CONTENT:
-
-{content[:8000]}
-
----
+{chunk}
 
 ## USER NOTES:
 
@@ -764,38 +862,169 @@ Is there debate? Opposition? Risk? Drama?
 
 ---
 
-## OUTPUT FORMAT
+## YOUR MISSION - EXTRACT EVERYTHING
 
-Write flowing paragraphs, not bullet points. This will be used to write a script someone will SPEAK.
+Extract EVERY SINGLE fact, number, quote, name, date from this document.
+DO NOT summarize. DO NOT condense. List EVERYTHING individually.
 
-**THE STORY:**
-[2-3 paragraphs explaining what happened and why it matters]
+## OUTPUT FORMAT - LIST EVERYTHING YOU FIND:
 
-**WHY NOW:**
-[1 paragraph on the trigger/timing]
+### ALL NUMBERS (List every single number)
+1. [Number] - [What it represents]
+2. [Number] - [What it represents]
+(List EVERY number - no limit)
 
-**THE NUMBERS (explained simply):**
-[Numbers with plain English context, written as sentences not bullets]
+### ALL QUOTES (List every quote)
+1. "[Quote]" — [Person], [Context]
+2. "[Quote]" — [Person], [Context]
+(List EVERY quote - no limit)
 
-**OLD WAY VS NEW WAY:**
-[Contrast written conversationally]
+### ALL FACTS (List every fact)
+1. [Fact]
+2. [Fact]
+(List EVERY fact - no limit)
 
-**BIGGER PICTURE:**
-[Why this matters beyond the immediate story]
+### ALL PEOPLE MENTIONED
+- [Name]: [Title], [Key Info], [Any quotes]
+(List EVERY person - no limit)
 
-**QUOTES:**
-[Any direct quotes with attribution]
+### ALL DATES/TIMELINE
+- [Date]: [Event]
+(List EVERY date - no limit)
 
-**TENSION/DRAMA:**
-[Any controversy or stakes]
+### ALL COMPARISONS
+- [Comparison]
+(List EVERY comparison - no limit)
+
+### THE STORY
+[Write out the complete narrative from this section]
+
+---
+
+CRITICAL: Your job is to PRESERVE EVERYTHING. No limits. No summarizing. Extract every single data point.
 """
 
-        response = await self.selector_llm.ainvoke(extract_prompt)
+            chunk_response = await self.selector_llm.ainvoke(extract_prompt)
+            all_doc_facts.append(chunk_response.content)
+            print(f"[Research] Extracted {len(chunk_response.content)} chars from chunk {chunk_idx + 1}")
+
+        # Combine all document extractions
+        doc_facts = "\n\n---\n\n".join(all_doc_facts)
+        print(f"[Research] Total extracted from document: {len(doc_facts)} chars")
+
+        # STEP 2: Do EXHAUSTIVE Perplexity research to ADD MORE data
+        perplexity_prompt = f"""
+Research this topic EXHAUSTIVELY to ADD to user-provided content.
+
+## TOPIC: {topic}
+
+## KEY FACTS FROM USER'S DOCUMENT (for context):
+{doc_facts[:4000]}
+
+---
+
+## YOUR MISSION - FIND EVERYTHING THE DOCUMENT DOESN'T HAVE
+
+The user provided a document. Now search the web and find:
+- ALL additional numbers/statistics not in their document
+- ALL quotes from OTHER people (analysts, competitors, experts, users)
+- ALL recent news (2024-2025)
+- ALL India-specific data (₹ pricing, Indian users, Indian market)
+- ALL competitor comparisons
+- ALL controversy/drama
+- ALL future predictions
+- ALL background info on people mentioned
+
+## OUTPUT FORMAT - NO LIMITS
+
+### ADDITIONAL NUMBERS FROM WEB (Find as many as possible)
+1. [Number] - [What it represents] - [Source]
+2. [Number] - [What it represents] - [Source]
+(No limit - list everything you find)
+
+### ADDITIONAL QUOTES FROM WEB (Find as many as possible)
+1. "[Quote]" — [Person], [Title], [Source]
+2. "[Quote]" — [Person], [Title], [Source]
+(No limit - list everything you find)
+
+### ADDITIONAL FACTS FROM WEB (Find as many as possible)
+1. [Fact] - [Source]
+2. [Fact] - [Source]
+(No limit - list everything you find)
+
+### INDIA ANGLE (Only if naturally relevant)
+NOTE: Only include if there's a GENUINE connection (Indian founders, Indian market impact, ₹ pricing).
+Don't force India angle if no natural connection.
+If relevant:
+- Market size in India: [₹ amount]
+- Indian users: [Number]
+- Indian pricing: [₹]
+- Indian competitors: [List]
+
+### RECENT NEWS (2024-2025)
+1. [Date]: [News item] - [Source]
+2. [Date]: [News item] - [Source]
+(No limit - list all recent news)
+
+### COMPETITOR DATA
+| Metric | This | Competitor 1 | Competitor 2 | Competitor 3 |
+(Include all competitors and metrics)
+
+### PEOPLE BACKGROUND (Additional info on people mentioned)
+**[Person Name]:**
+- Full background
+- Education
+- Previous roles
+- Net worth (if available)
+- Key quotes
+
+### CONTROVERSY/DRAMA (Find all drama)
+1. [Drama/Controversy] - [Details]
+(No limit - list all dramatic elements)
+
+### FUTURE PREDICTIONS
+1. [Prediction] - [Expert/Source]
+(No limit - list all predictions)
+
+### SOURCES
+(List all sources used)
+
+---
+
+CRITICAL: Find as much NEW information as possible. No limits on quantity.
+"""
+
+        # Get additional research from Perplexity
+        perplexity_response = await self.llm.ainvoke(perplexity_prompt)
+        perplexity_facts = perplexity_response.content
+
+        print(f"[Research] Got {len(perplexity_facts)} chars from Perplexity research")
+
+        # STEP 3: Combine ALL data - no condensing
+        combined_research = f"""
+# COMPLETE RESEARCH DATA
+
+## EVERYTHING FROM USER'S DOCUMENT:
+
+{doc_facts}
+
+---
+
+## EVERYTHING FROM WEB RESEARCH:
+
+{perplexity_facts}
+
+---
+
+## TOTAL: All facts from document + all facts from web research
+"""
+
+        print(f"[Research] Combined research: {len(combined_research)} chars total")
 
         return {
             "status": "complete",
-            "topic_type": "user_content",
-            "research_data": response.content,
-            "selected_angle": {"angle": topic, "source": "user_uploaded_content"},
-            "research_sources": ["User uploaded document"],
+            "topic_type": "user_content_plus_research",
+            "research_data": combined_research,
+            "selected_angle": {"angle": topic, "source": "user_document + perplexity_research"},
+            "research_sources": ["User uploaded document (complete)", "Perplexity web research (exhaustive)"],
         }

@@ -47,43 +47,85 @@ class MultiAngleWriter:
         )
 
     def _get_angle_planning_prompt(self, topic: str, research_data: str) -> str:
-        """Prompt to plan 3 different angles for the topic"""
+        """Prompt to plan 3 RADICALLY different angles for the topic"""
         return f"""You are an expert viral content strategist for Instagram Reels.
 
-Given this topic and research, identify 3 DISTINCT angles that could each become a viral script.
-Each angle should approach the topic from a completely different perspective.
+Given this topic and research, identify 3 RADICALLY DIFFERENT angles.
+Each script should feel like it's about a COMPLETELY DIFFERENT STORY.
 
 **TOPIC:** {topic}
 
 **RESEARCH DATA:**
-{research_data[:3000]}
+{research_data[:4000]}
 
-**ANGLE TYPES TO CONSIDER:**
-1. The Hidden Strategy Angle - Focus on secret genius/strategy most people miss
-2. The Disruption Angle - How this is beating/disrupting traditional players
-3. The India Opportunity Angle - What this means for Indian audience (₹, opportunities)
-4. The Future Tech Angle - Sci-fi becoming reality
-5. The Business Genius Angle - Break down the brilliant business model
-6. The Underdog Story Angle - Human story behind the success
-7. The Controversy Angle - Ethical dilemmas or debates
-8. The FOMO Angle - What you're missing out on
+---
 
-**OUTPUT FORMAT (JSON):**
+## CRITICAL: SCRIPTS MUST BE COMPLETELY DIFFERENT
+
+The 3 scripts should NOT:
+- Tell the same story with different words
+- Use the same timeline/narrative
+- Focus on the same person
+- Have similar hooks
+
+The 3 scripts SHOULD:
+- Each focus on a DIFFERENT aspect of the research
+- Use DIFFERENT facts/numbers from the research
+- Target DIFFERENT emotions
+- Have COMPLETELY different opening hooks
+
+---
+
+## ANGLE CATEGORIES (Pick 3 from different categories)
+
+**CATEGORY A - PERSON-FOCUSED:**
+- The Underdog Origin Story - Childhood struggles, early failures, comeback
+- The Villain Arc - Controversial decisions, enemies made, ruthless tactics
+- The Mentor/Advisor - Who guided them, secret influences
+
+**CATEGORY B - BUSINESS-FOCUSED:**
+- The Hidden Revenue Model - How they ACTUALLY make money
+- The Competitor Destroyer - How they're killing rivals
+- The Market Timing - Why this worked NOW vs before
+
+**CATEGORY C - DRAMATIC:**
+- The Scandal/Controversy - Drama, lawsuits, harassment, firing
+- The Near-Death Moment - Almost failed, crisis point, pivot
+- The Secret Nobody Knows - Hidden facts most people miss
+
+**CATEGORY D - EDUCATIONAL:**
+- The Marketing Genius - Guerrilla tactics, growth hacks
+- The Product Innovation - What makes it technically different
+- The Market Timing - Why it worked NOW vs before
+
+**CATEGORY E - FUTURE-FOCUSED:**
+- The Industry Disruption - What industries this kills
+- The 5-Year Prediction - Where this is heading
+- The Global Impact - How this affects everyone
+
+---
+
+## OUTPUT FORMAT (JSON):
 ```json
 {{
     "angles": [
         {{
-            "name": "Short angle name (3-5 words)",
-            "hook_style": "shock|question|negative|story|financial|status",
-            "focus": "What specific aspect to focus on",
-            "opening_direction": "How should the hook start",
-            "key_facts_to_use": ["fact1", "fact2", "fact3"],
-            "emotional_trigger": "curiosity|fomo|outrage|inspiration|fear"
+            "name": "5-7 word angle name",
+            "category": "A/B/C/D/E",
+            "hook_style": "shock|question|negative|story|financial|controversy",
+            "focus": "Specific aspect - be detailed (20+ words)",
+            "opening_direction": "Exact hook approach (20+ words)",
+            "facts_to_use": ["specific fact 1 from research", "specific fact 2", "specific fact 3"],
+            "facts_to_AVOID": ["fact to NOT use - reserved for other scripts"],
+            "emotional_trigger": "curiosity|fomo|outrage|inspiration|fear|greed",
+            "structure": "story|revelation|comparison|timeline|listicle"
         }},
-        // ... 2 more angles
+        // ... 2 more from DIFFERENT categories
     ]
 }}
 ```
+
+IMPORTANT: Each angle must use DIFFERENT facts from research. No overlap.
 
 Return ONLY the JSON, no other text."""
 
@@ -95,103 +137,260 @@ Return ONLY the JSON, no other text."""
         rag_context: str,
         angle_number: int
     ) -> str:
-        """Comprehensive prompt for writing a single angle's script"""
-        return f"""You are an ELITE viral content scriptwriter for Instagram Reels.
+        """Comprehensive prompt for writing a single angle's script - RADICALLY DIFFERENT each time"""
 
-Your scripts consistently achieve millions of views by leveraging proven psychological triggers.
+        # Different structures for each script
+        # Script 1 = Controversy/Drama (most engaging first)
+        # Script 2 = Story Arc (personal journey)
+        # Script 3 = Business Breakdown (analytical)
+        structures = {
+            1: {
+                "name": "THE CONTROVERSY/DRAMA",
+                "format": """
+[HOOK - Controversial statement or drama]
+[THE SETUP - What everyone thinks they know]
+[THE TWIST - What actually happened]
+[THE DRAMA - Conflict, lawsuit, or scandal details]
+[THE RESPONSE - How they handled it]
+[THE OUTCOME - Where they are now]
+[THE DEBATE - Both sides of the argument]
+[ENGAGEMENT - Controversial question + CTA]
+""",
+                "hook_types": [
+                    "Controversy/scandal hook",
+                    "Lawsuit/legal drama hook",
+                    "Public attack hook (They called her...)",
+                    "Industry war hook (X vs Y: Who's right?)",
+                    "Unpopular opinion hook (Everyone loves X, but...)"
+                ]
+            },
+            2: {
+                "name": "THE STORY ARC",
+                "format": """
+[HOOK - Shocking personal moment]
+[BACKSTORY - Where they started, 2-3 sentences]
+[THE STRUGGLE - What went wrong, specific details]
+[THE TURNING POINT - "But here's where it gets interesting..."]
+[THE BREAKTHROUGH - What they did differently]
+[THE RESULT - Specific numbers/outcome]
+[THE LESSON - What we can learn]
+[ENGAGEMENT - Personal question + CTA]
+""",
+                "hook_types": [
+                    "Personal tragedy/struggle hook",
+                    "Age-based shock hook (At just X years old...)",
+                    "Rejection/failure hook (They fired her for...)",
+                    "Timeline hook (In X months, she went from...)",
+                    "Identity hook (She was just a...)"
+                ]
+            },
+            3: {
+                "name": "THE BUSINESS BREAKDOWN",
+                "format": """
+[HOOK - Mind-blowing business stat]
+[THE PROBLEM - What was broken in the industry]
+[THE INSIGHT - What they saw that others missed]
+[THE STRATEGY - Specific tactic/approach used]
+[THE NUMBERS - Revenue, users, growth stats]
+[THE COMPARISON - vs competitors or industry average]
+[THE TAKEAWAY - Business lesson for audience]
+[ENGAGEMENT - Would you use this? + CTA]
+""",
+                "hook_types": [
+                    "Revenue/valuation shock hook",
+                    "Competitor destruction hook (X is killing Y because...)",
+                    "Secret strategy hook (Here's what nobody knows...)",
+                    "Cost comparison hook (X costs $Y. This costs $Z.)",
+                    "Market timing hook (In 2024, everything changed...)"
+                ]
+            }
+        }
 
-## YOUR TASK
-Write Script #{angle_number} for this topic, focusing on: **{angle['name']}**
+        struct = structures.get(angle_number, structures[1])
+
+        return f"""You write viral Instagram Reel scripts. 60 seconds. Spoken out loud. For Indian tech audiences - but they're smart people who want interesting stories, not dumbed-down content.
+
+## CRITICAL: THIS IS SCRIPT #{angle_number} - IT MUST BE COMPLETELY DIFFERENT FROM OTHER SCRIPTS
+
+This script uses the "{struct['name']}" structure.
+It must focus on: **{angle['name']}**
+
+---
+
+## HOW VIRAL REELS WORK
+
+A viral reel isn't a summary. It's a JOURNEY.
+
+You're not informing people. You're taking them somewhere. Every few seconds, you give them a reason to keep watching.
+
+Think of it like this:
+- Second 0-5: Hook them (why should I care?)
+- Second 5-15: Context (what's the backstory?)
+- Second 15-30: The meat (what actually happened?)
+- Second 30-45: The twist (here's what most people miss...)
+- Second 45-55: The bigger picture (why this changes everything)
+- Second 55-60: The question (make them think/respond)
+
+---
+
+## THE SECRET: HOOKS THROUGHOUT
+
+Most people think hook = first line only. Wrong.
+
+A viral script has MULTIPLE hooks. Mini-cliffhangers that keep people watching.
+
+After every major point, add a transition that creates curiosity:
+- "But here's where it gets interesting..."
+- "And then they discovered something nobody expected."
+- "That's not even the crazy part."
+- "But there's a problem nobody's talking about."
+- "Here's what the headlines missed."
+
+---
+
+## SPEAK LIKE A HUMAN (LAYMAN LANGUAGE)
+
+This will be SPOKEN. Out loud. To camera.
+
+**No bullet points.** You can't speak bullets.
+**No jargon.** Explain like you're telling a friend.
+**No long sentences.** If you run out of breath reading it, it's too long.
+
+Numbers need to be FELT, not just stated:
+BAD: "99% fuel efficiency vs <1% in traditional reactors"
+GOOD: "Normal reactors? They waste 99% of their fuel. This thing uses almost everything."
+
+Make abstract things concrete. Use analogies. Compare to things people know.
+
+---
+
+## HAVE A PERSPECTIVE
+
+You're not Wikipedia. You have opinions.
+
+A summary says: "China built a thorium reactor."
+A perspective says: "While everyone was arguing about nuclear safety, China quietly solved a problem we've ignored for 50 years."
+
+Take a stance. Have a point of view. Make people think.
+
+---
+
+## INDIA ANGLE - ONLY IF NATURAL
+
+Our audience is Indian. But don't force India into every script.
+
+NATURAL India angles (use these):
+- Indian founders/investors directly involved
+- Direct impact on Indian users/market
+- Price context in ₹ that adds genuine value
+- Indian company competing or partnering
+
+FORCED India angles (AVOID):
+- "This could be useful for Indian startups" on unrelated topics
+- "Indian developers should watch this" for generic news
+- Random ₹ conversions that add nothing
+
+If there's no natural connection, just tell a great story. Don't force it.
+
+---
 
 ## TOPIC
 {topic}
 
-## ANGLE DETAILS
+## THIS SCRIPT'S UNIQUE ANGLE
 - **Focus:** {angle['focus']}
 - **Hook Style:** {angle['hook_style']}
 - **Opening Direction:** {angle['opening_direction']}
-- **Key Facts to Use:** {', '.join(angle.get('key_facts_to_use', [])[:3])}
+- **Facts to USE:** {', '.join(angle.get('facts_to_use', angle.get('key_facts_to_use', []))[:4])}
+- **Facts to AVOID (used in other scripts):** {', '.join(angle.get('facts_to_AVOID', [])[:3])}
 - **Emotional Trigger:** {angle.get('emotional_trigger', 'curiosity')}
+- **Structure:** {angle.get('structure', 'story')}
 
 ## RESEARCH DATA
-{research_data[:2500]}
+{research_data[:3500]}
 
 ## PATTERNS FROM WINNING SCRIPTS
-{rag_context[:2000]}
+{rag_context[:1500]}
 
 ---
 
-## THE VIRAL FORMULA STRUCTURE
+## SCRIPT #{angle_number} STRUCTURE: {struct['name']}
+{struct['format']}
 
-### 1. HOOK CONSTRUCTION (0-3 seconds) - WRITE 5 DIFFERENT HOOKS
-You MUST write 5 unique hooks exploring different framings:
-- **Hook 1:** The Shocking Claim - Bold statement that challenges beliefs
-- **Hook 2:** The Hidden Knowledge - "If you think X, you don't know about Y..."
-- **Hook 3:** The Financial/Status - Numbers, money, or status trigger
-- **Hook 4:** The Curiosity Gap - Create immediate need to know more
-- **Hook 5:** The Personal Stakes - "Every [audience] is affected by this..."
+---
+
+## 5 HOOK OPTIONS FOR THIS STRUCTURE
+Write 5 hooks matching these types:
+1. {struct['hook_types'][0]}
+2. {struct['hook_types'][1]}
+3. {struct['hook_types'][2]}
+4. {struct['hook_types'][3]}
+5. {struct['hook_types'][4]}
 
 **Hook Rules:**
 - Under 15 words each
-- Include specific numbers when possible
-- Never start with company name
-- Pattern-interrupt in first 2 seconds
+- Include specific numbers from RESEARCH
+- Never start with company/brand name
+- Pattern-interrupt immediately
+- Each hook should feel DIFFERENT from the others
 
-### 2. SCRIPT STRUCTURE (60 seconds, 150-200 words)
-```
-[HOOK - Choose best one from your 5]
-[IMMEDIATE VALIDATION - 3-8s] - Proof that supports your hook
-[PATTERN INTERRUPT - 8-15s] - "But here's where it gets interesting..."
-[REVELATION CASCADE - 15-30s] - 3-4 key details in rapid succession
-[BUSINESS GENIUS - 30-45s] - Core strategy/mechanism explained
-[BROADER IMPLICATIONS - 45-55s] - Universal principle or takeaway
-[ENGAGEMENT & CTA - 55-60s] - Question + follow CTA
-```
+---
 
-### 3. MANDATORY ELEMENTS
-- [ ] "The crazy part" or "But here's where it gets interesting" transition
-- [ ] Specific numbers with context (not standalone)
-- [ ] Short, punchy sentences (8-12 words)
-- [ ] One-sentence paragraphs for emphasis
-- [ ] At least 2 mid-script retention hooks
-- [ ] Direct question near the end
-- [ ] Value-based follow CTA
+## SCRIPT RULES
 
-### 4. BANNED ELEMENTS (DO NOT USE)
-- Words: DESTROYED, PANICKING, TERRIFYING, CHAOS, INSANE, EXPOSED, BOMBSHELL, SHOCKED, MIND-BLOWING (in caps)
-- Phrases: "no one is safe", "drop a", "comment if you agree", "big tech doesn't want"
+**LENGTH:** 150-200 words (60 seconds when spoken)
+
+**MANDATORY:**
+- Multiple hooks THROUGHOUT (not just opening) - at least 2-3 mid-script retention triggers
+- Short, punchy sentences (8-12 words max)
+- One-sentence paragraphs for emphasis
+- Specific numbers WITH context (make them FELT, not just stated)
+- LAYMAN LANGUAGE - no jargon without explanation
+- PERSPECTIVE - have an opinion, don't just summarize
+- Direct question near the end (real question, not "what do you think?")
+- Value-based follow CTA (not generic "follow for more")
+
+**BANNED:**
+- DESTROYED, PANICKING, TERRIFYING, CHAOS, INSANE (in caps)
+- "No one is safe", "drop a", "comment if you agree"
 - Bullet points (can't be spoken)
 - Starting with company name
-- Long paragraphs
+- Long paragraphs (3+ sentences)
 - Technical jargon without explanation
-- Generic CTAs like "follow for more"
+- FORCED India angles (only natural connections)
+- "What do you think?" as closing question (too generic)
 
 ---
 
 ## OUTPUT FORMAT
 
-### SCRIPT {angle_number}: {angle['name'].upper()}
+SCRIPT {angle_number}: {angle['name'].upper()}
 
-**5 HOOK OPTIONS:**
+5 HOOK OPTIONS:
 
-Hook 1: [The Shocking Claim hook]
+Hook 1: [First hook type]
 
-Hook 2: [The Hidden Knowledge hook]
+Hook 2: [Second hook type]
 
-Hook 3: [The Financial/Status hook]
+Hook 3: [Third hook type]
 
-Hook 4: [The Curiosity Gap hook]
+Hook 4: [Fourth hook type]
 
-Hook 5: [The Personal Stakes hook]
+Hook 5: [Fifth hook type]
 
-**FULL SCRIPT:**
-[Write the complete 150-200 word script here, using your best hook as the opening.
-Use short paragraphs. Include all mandatory elements.
-Make it conversational and spoken-friendly.]
+FULL SCRIPT:
+
+[Write the complete 150-200 word script using {struct['name']} structure.
+Start with your best hook. Use the specific facts assigned to this angle.
+Make every sentence punchy and spoken-friendly.
+Include 2-3 mid-script retention hooks.
+Use LAYMAN LANGUAGE throughout.
+Have PERSPECTIVE - don't just summarize.
+Only include India angle if there's a natural connection.]
 
 ---
 
-Write Script #{angle_number} now. Make it VIRAL-WORTHY."""
+Write Script #{angle_number} now. Make it COMPLETELY DIFFERENT from the other scripts."""
 
     async def generate_angles(self, topic: str, research_data: str) -> List[Dict]:
         """Generate 3 distinct angles for the topic"""
