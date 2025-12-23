@@ -74,8 +74,9 @@ class TrainRequest(BaseModel):
 
 # -------- Endpoints --------
 @server.get("/")
+@server.head("/")
 def health_check():
-    """Health check endpoint"""
+    """Health check endpoint - supports GET and HEAD for uptime monitors"""
     count = collection.count()
     server_log.debug(f"Health check: {count} vectors stored")
     return {"status": "ok", "vectors_stored": count}
