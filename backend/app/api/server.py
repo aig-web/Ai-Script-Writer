@@ -270,13 +270,15 @@ async def generate_stream(
 
                         server_log.info(f"Research quality: {quality_score}/100, Topic type: {topic_type}")
 
-                        if quality_score > 0:
-                            yield json.dumps({
-                                "type": "status",
-                                "message": f"Research complete (Quality: {quality_score}/100)"
-                            }) + "\n"
+                        # User-friendly status messages based on quality
+                        if quality_score >= 80:
+                            yield json.dumps({"type": "status", "message": "Research complete - excellent data found"}) + "\n"
+                        elif quality_score >= 60:
+                            yield json.dumps({"type": "status", "message": "Research complete - good data found"}) + "\n"
+                        elif quality_score >= 40:
+                            yield json.dumps({"type": "status", "message": "Research complete - basic data found"}) + "\n"
                         else:
-                            yield json.dumps({"type": "status", "message": "Research complete..."}) + "\n"
+                            yield json.dumps({"type": "status", "message": "Research complete"}) + "\n"
 
                     if node == "retriever":
                         server_log.info("Style retrieval completed")
