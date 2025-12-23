@@ -23,6 +23,12 @@ from app.agents.perplexity_researcher import PerplexityResearcher
 from app.agents.nodes.retriever import retrieve_style_context
 
 
+# --- COMPACT LOGGING ---
+def log_node(name: str, msg: str):
+    """Compact node log"""
+    print(f"[{name}] {msg}")
+
+
 # --- SAFE STATE DEFINITION ---
 class AgentState(TypedDict, total=False):
     # User Inputs
@@ -65,9 +71,9 @@ def research_node(state: AgentState):
 
     # SKIP RESEARCH MODE: Use only provided content
     if skip_research:
-        # Use file content and user notes as the research data
-        provided_content = []
+        log_node("Research", "Skipping web research - using provided content")
 
+        provided_content = []
         if file_content and len(file_content.strip()) > 0:
             provided_content.append(f"PROVIDED FILES:\n{file_content}")
 
@@ -88,6 +94,8 @@ def research_node(state: AgentState):
 
     # If user provided file content, combine with Perplexity research
     if file_content and len(file_content) > 100:
+        log_node("Research", "Calling Perplexity + combining with files...")
+
         researcher = PerplexityResearcher()
         research_result = researcher.research(topic, user_notes)
 
@@ -107,8 +115,12 @@ WEB RESEARCH (Latest Updates from Perplexity):
         }
 
     # Full Perplexity research (default)
+    log_node("Research", f"Calling Perplexity for: {topic[:40]}...")
+
     researcher = PerplexityResearcher()
     result = researcher.research(topic, user_notes)
+
+    log_node("Research", f"✓ Got {len(result.get('compressed_bullets', ''))} chars")
 
     return {
         "research_data": result["compressed_bullets"],
@@ -123,7 +135,16 @@ def retrieval_node(state: AgentState):
     """
     Retrieves similar scripts from ChromaDB for style reference.
     """
-    context = retrieve_style_context(state['topic'], state['mode'])
+    topic = state.get('topic', '')
+    mode = state.get('mode')
+
+    try:
+        context = retrieve_style_context(topic, mode)
+        log_node("Retriever", f"✓ Found {len(context)} chars of style context")
+    except Exception as e:
+        log_node("Retriever", f"✗ {str(e)[:50]}")
+        context = "No style examples found"
+
     return {"style_context": context}
 
 
@@ -133,6 +154,11 @@ def writer_node(state: AgentState):
     Uses Claude 3.5 Sonnet via OpenRouter for final script generation.
     Claude is the best for creative, nuanced writing.
     """
+    revision_count = state.get("revision_count", 0)
+    mode = state.get('mode')
+
+    log_node("Writer", f"Claude writing... (revision #{revision_count + 1})")
+
     # CLAUDE 3.5 SONNET via OpenRouter
     llm = ChatOpenAI(
         model="anthropic/claude-3.5-sonnet",  # Claude for final output
@@ -143,7 +169,7 @@ def writer_node(state: AgentState):
     )
 
     # Select the appropriate Vibhay formula
-    template = INFORMATIONAL_PROMPT if state['mode'] == ScriptMode.INFORMATIONAL else LISTICAL_PROMPT
+    template = INFORMATIONAL_PROMPT if mode == ScriptMode.INFORMATIONAL else LISTICAL_PROMPT
 
     # Build the human message with all context
     human_message = """
@@ -186,7 +212,10 @@ NOW GENERATE THE SCRIPT FOLLOWING THE VIBHAY FORMULA EXACTLY.
         "feedback": state.get("critic_feedback", "First draft - no feedback yet")
     })
 
-    return {"draft": response.content}
+    draft = response.content
+    log_node("Writer", f"✓ Generated {len(draft)} chars")
+
+    return {"draft": draft}
 
 
 # --- NODE 4: CRITIC ---
@@ -194,16 +223,22 @@ def critic_node(state: AgentState):
     """
     Validates the script against Vibhay quality standards.
     """
+    draft = state.get('draft', '')
+    mode = state.get('mode')
+    revision_count = state.get("revision_count", 0)
+
     critic = ScriptCritic()
-    result = critic.validate(state['draft'], state['mode'])
+    result = critic.validate(draft, mode)
 
     if result.status == "PASS":
+        log_node("Critic", f"✓ PASSED (score: {result.score}/100)")
         return {"critic_feedback": "PASS"}
     else:
+        log_node("Critic", f"✗ FAILED (score: {result.score}/100) - revision needed")
         feedback = f"FAILED CHECKS: {result.reasons}\n\nREQUIRED FIXES: {result.feedback}"
         return {
             "critic_feedback": feedback,
-            "revision_count": state.get("revision_count", 0) + 1
+            "revision_count": revision_count + 1
         }
 
 
@@ -213,12 +248,18 @@ def checker_node(state: AgentState):
     Analyzes hooks, ranks them, and creates optimized version.
     Uses GPT-4o-mini for fast, reliable analysis.
     """
+    draft = state.get('draft', '')
+    mode = state.get('mode')
+
     try:
+        log_node("Checker", "Analyzing hooks...")
         checker = ScriptChecker()
-        result = checker.check(state['draft'], state['mode'])
+        result = checker.check(draft, mode)
 
         # Format the analysis for display
         analysis = checker.format_analysis(result)
+
+        log_node("Checker", f"✓ Best hook: #{result.best_hook_number} | Viral: {result.viral_potential}")
 
         return {
             "checker_analysis": analysis,
@@ -227,11 +268,10 @@ def checker_node(state: AgentState):
             "hook_ranking": result.hook_ranking
         }
     except Exception as e:
-        # On error, return original draft
-        print(f"[Checker Node Error] {e}")
+        log_node("Checker", f"✗ {str(e)[:50]}")
         return {
             "checker_analysis": f"Analysis skipped: {str(e)[:100]}",
-            "optimized_script": state['draft'],
+            "optimized_script": draft,
             "best_hook_number": 1,
             "hook_ranking": [1, 2, 3, 4, 5]
         }
@@ -242,12 +282,15 @@ def should_continue(state: AgentState):
     """
     Decides whether to loop back to writer or go to checker.
     """
-    if state.get("critic_feedback") == "PASS":
-        return "checker"  # Go to checker for optimization
+    feedback = state.get("critic_feedback", "")
+    revision_count = state.get("revision_count", 0)
+
+    if feedback == "PASS":
+        return "checker"
 
     # Max 2 revision attempts
-    if state.get("revision_count", 0) >= 2:
-        return "checker"  # Still go to checker even if max revisions
+    if revision_count >= 2:
+        return "checker"
 
     return "writer"
 

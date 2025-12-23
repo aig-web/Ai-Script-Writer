@@ -1,13 +1,15 @@
 import os
+import time
 from pathlib import Path
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Load .env from backend directory (handles running from different directories)
 env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
-# Debug: Print to confirm API key is loaded (remove in production)
-print(f"[DEBUG] API Key loaded: {bool(os.getenv('OPENAI_API_KEY'))}")
+# Minimal startup log
+print(f"[ScriptAI] Starting - API Key: {'Yes' if os.getenv('OPENAI_API_KEY') else 'No'}")
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
@@ -33,7 +35,6 @@ allowed_origins = [
 ]
 
 # Add Vercel domains dynamically from environment
-import os
 vercel_url = os.getenv("VERCEL_URL")
 if vercel_url:
     allowed_origins.append(f"https://{vercel_url}")
@@ -66,6 +67,8 @@ def health_check():
 
 @server.post("/train_script")
 def train_script(request: TrainRequest):
+    print(f"[Train] {request.title} ({request.mode.value})")
+
     try:
         skeleton = generate_skeleton(request.script_content)
         hook_text = extract_hook(request.script_content)
@@ -78,6 +81,9 @@ def train_script(request: TrainRequest):
             skeleton_text=skeleton,
             hook_text=hook_text,
         )
+
+        print(f"[Train] ✓ Saved {script_id}")
+
         return {
             "status": "success",
             "script_id": script_id,
@@ -87,6 +93,7 @@ def train_script(request: TrainRequest):
             },
         }
     except Exception as e:
+        print(f"[Train] ✗ {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -110,8 +117,11 @@ async def generate_stream(
     user_notes: str = Form(""),
     mode: ScriptMode = Form(...),
     files: List[UploadFile] = File(None),
-    skip_research: bool = Form(False),  # NEW: Option to skip Tavily research
+    skip_research: bool = Form(False),
 ):
+    # Log the request
+    print(f"\n[Generate] Topic: {topic[:50]}... | Mode: {mode.value} | Skip Research: {skip_research}")
+
     # Read files BEFORE the generator (outside async generator)
     all_file_text = []
     if files:
@@ -129,8 +139,12 @@ async def generate_stream(
                     all_file_text.append(f"--- {file.filename} ---\n{text}")
 
     file_content = "\n\n".join(all_file_text) if all_file_text else ""
+    if files:
+        print(f"[Generate] Files loaded: {len(all_file_text)} ({len(file_content)} chars)")
 
     async def event_generator():
+        start_time = time.time()
+
         try:
             # Send file reading status if files were provided
             if all_file_text:
@@ -143,7 +157,7 @@ async def generate_stream(
                 "user_notes": user_notes,
                 "file_content": file_content,
                 "revision_count": 0,
-                "skip_research": skip_research,  # Pass to graph
+                "skip_research": skip_research,
             }
             yield json.dumps({"type": "status", "message": f"Agent starting ({mode.value})..."}) + "\n"
             final_draft = ""
@@ -155,12 +169,13 @@ async def generate_stream(
                 for node, output in step.items():
                     if node == "researcher":
                         # Send research data
-                        yield json.dumps({"type": "research", "data": output.get("research_data", "")}) + "\n"
+                        research_data = output.get("research_data", "")
+                        yield json.dumps({"type": "research", "data": research_data}) + "\n"
                         # Send sources if available
                         sources = output.get("research_sources", [])
                         if sources:
                             yield json.dumps({"type": "sources", "data": sources}) + "\n"
-                        yield json.dumps({"type": "status", "message": "Perplexity research complete..."}) + "\n"
+                        yield json.dumps({"type": "status", "message": "Research complete..."}) + "\n"
 
                     if node == "retriever":
                         yield json.dumps({"type": "status", "message": "Analyzing trained styles..."}) + "\n"
@@ -176,7 +191,7 @@ async def generate_stream(
                             yield json.dumps({"type": "status", "message": f"Revision {revision}: Improving script..."}) + "\n"
 
                     if node == "checker":
-                        yield json.dumps({"type": "status", "message": "Analyzing hooks & optimizing script..."}) + "\n"
+                        yield json.dumps({"type": "status", "message": "Analyzing hooks & optimizing..."}) + "\n"
                         # Send checker analysis
                         if "checker_analysis" in output:
                             checker_analysis = output["checker_analysis"]
@@ -198,7 +213,10 @@ async def generate_stream(
                     if "draft" in output:
                         final_draft = output["draft"]
 
-            # 4. Final Result - Send both original draft and optimized version
+            # 4. Final Result
+            total_time = time.time() - start_time
+            print(f"[Generate] ✓ Complete in {total_time:.1f}s | Draft: {len(final_draft)} chars")
+
             yield json.dumps({
                 "type": "result",
                 "data": {
@@ -208,6 +226,7 @@ async def generate_stream(
             }) + "\n"
 
         except Exception as e:
+            print(f"\n❌ ERROR: {str(e)}")
             yield json.dumps({"type": "error", "message": str(e)}) + "\n"
 
     return StreamingResponse(event_generator(), media_type="application/x-ndjson")

@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from supabase import create_client, Client
-from sentence_transformers import SentenceTransformer
 
 from app.schemas.enums import ScriptMode, VectorType, HookType
 
@@ -26,15 +25,21 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Optional[Client] = None
 if SUPABASE_URL and SUPABASE_KEY:
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    print("[Storage] Supabase connected")
-else:
-    print("[Storage] Supabase not configured - using fallback mode")
 
 
 # ---------------------------
-# Local Embedding Model
+# Lazy Loading Embedding Model (saves ~300MB at startup)
 # ---------------------------
-model = SentenceTransformer("all-MiniLM-L6-v2")
+_embedding_model = None
+
+
+def get_embedding_model():
+    """Lazy load the embedding model only when needed"""
+    global _embedding_model
+    if _embedding_model is None:
+        from sentence_transformers import SentenceTransformer
+        _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+    return _embedding_model
 
 
 # ---------------------------
@@ -74,7 +79,8 @@ def add_script_to_db(
     - Hook only (Style match)
     - Skeleton (Structure match)
     """
-    # 1. Generate embeddings
+    # 1. Generate embeddings (lazy load model)
+    model = get_embedding_model()
     embeddings = model.encode(
         [full_text, hook_text, skeleton_text]
     ).tolist()
@@ -140,7 +146,8 @@ def query_similar(
     """
     Query similar scripts using vector similarity.
     """
-    # Generate query embedding
+    # Generate query embedding (lazy load model)
+    model = get_embedding_model()
     query_embedding = model.encode([query_text])[0].tolist()
 
     if supabase:

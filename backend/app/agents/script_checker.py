@@ -1,12 +1,13 @@
 """
-Script Checker v5.1 - Multi-Hook Analyzer Edition
-Elite Script Quality Analyst for Instagram Reels
-Analyzes multiple hooks separately, then body, recommends best combination
+Script Checker v8.0 - Hook Optimization Expert
+Analyzes hooks using the proven viral formula with JSON output
+Includes retention checklist for maximum engagement
 """
 import os
 import re
+import json
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 from dotenv import load_dotenv
 
 # Ensure .env is loaded
@@ -22,7 +23,8 @@ from app.schemas.enums import ScriptMode
 # Spam words that should be avoided
 SPAM_WORDS = [
     "DESTROYED", "PANICKING", "TERRIFYING", "CHAOS", "INSANE",
-    "MIND-BLOWING", "BACKSTABBED", "EXPOSED", "SHOCKING", "BOMBSHELL"
+    "MIND-BLOWING", "BACKSTABBED", "EXPOSED", "SHOCKING", "BOMBSHELL",
+    "FURIOUS", "TREMBLING"
 ]
 
 
@@ -37,273 +39,174 @@ class SimpleCheckerResult:
         self.caps_words_found = []
         self.credibility_score = 0
         self.viral_potential = ""
+        self.hook_analysis: List[Dict] = []
+        self.retention_score = 0
 
 
-# Multi-Hook Analyzer System Prompt v3.0
-MULTI_HOOK_ANALYZER_PROMPT = """You are an Elite Script Analyst specializing in short-form viral content with expertise in hook optimization. You will analyze MULTIPLE HOOKS separately, then analyze the BODY, and finally recommend the best combination.
+# Hook Optimization Expert Prompt v8.0
+CHECKER_PROMPT = """You are a Hook Optimization Expert for viral Instagram Reels.
 
----
+## THE CORRECT HOOK FORMULA
 
-## PART A: HOOK ANALYSIS FRAMEWORK
+[Famous Person/Company] + [Dramatic Action Verb] + [Specific Detail/Number]
 
-A viral hook must contain these elements:
+## REFERENCE HOOKS (Score 9-10/10)
 
-### HOOK SCORING CRITERIA (Score each 1-10)
+- "Mark Zuckerberg panicked so hard that he tried to buy a company with zero products for $32 billion dollars."
+- "Sam Altman is secretly building a powerful AI model that's already crushing the top AI models."
+- "Meta is quietly becoming an electricity company. And no one's talking about it."
+- "This juice shop makes almost 2 crore rupees working just 4 hours a day."
+- "Samay Raina beat Netflix and Hotstar with just one Instagram story."
+- "Tesla's former AI director just dropped a tool that forces GPT, Claude, and Grok to judge each other."
+
+## HOOK SCORING CRITERIA
 
 | Criteria | Description | Weight |
 |----------|-------------|--------|
-| **STOP POWER** | Would someone stop scrolling? First 3 seconds test. | 25% |
-| **CURIOSITY GAP** | Creates "I need to know more" feeling | 20% |
-| **SPECIFICITY** | Uses specific names, numbers, claims (not vague) | 15% |
-| **EMOTION TRIGGER** | Triggers fear, shock, outrage, FOMO, or intrigue | 15% |
-| **PATTERN INTERRUPT** | Breaks expectations, contrarian, unexpected angle | 15% |
-| **CLARITY** | Instantly understandable (no confusion) | 10% |
-
-### HOOK TYPES REFERENCE
-
-| Type | Formula | Example |
-|------|---------|---------|
-| **SHOCK CLAIM** | [Person] + [Extreme action] + [Big number] | "Zuckerberg panicked so hard he tried to buy a company with zero products for $32B" |
-| **MYSTERY/SECRET** | [Someone] is secretly/quietly doing [X] | "Sam Altman is secretly building a model that's crushing every competitor" |
-| **CONTRARIAN** | Everyone thinks X, but actually Y | "Everyone thinks OpenAI is winning. They're actually losing." |
-| **FEAR/URGENCY** | [Threat] + [Stakes] + [Timeline] | "Google just mass-deleted accounts with no warning. Yours could be next." |
-| **CURIOSITY BOMB** | [Unusual fact] + Why/How tease | "This 20-person company rejected $32B. Here's why." |
-| **CONFRONTATION** | [Person A] vs [Person B] + conflict | "Elon Musk just declared war on Sam Altman. It's getting ugly." |
-| **IMPOSSIBLE STAT** | [Unbelievable number] + context | "One data center needs more power than New Orleans. Meta is building it." |
-
----
-
-## PART B: YOUR ANALYSIS TASK
-
-### STEP 1: ANALYZE EACH HOOK INDIVIDUALLY
-
-For EACH hook provided, create a detailed analysis card:
-
----
-
-#### **HOOK #[X] ANALYSIS**
-
-**THE HOOK:**
-[Quote the hook exactly]
-
-**HOOK TYPE IDENTIFIED:** [Shock Claim / Mystery / Contrarian / Fear / Curiosity / Confrontation / Impossible Stat / Hybrid]
-
-**SCORE BREAKDOWN:**
-
-| Criteria | Score (1-10) | Reasoning |
-|----------|--------------|-----------|
-| Stop Power | | |
-| Curiosity Gap | | |
-| Specificity | | |
-| Emotion Trigger | | |
-| Pattern Interrupt | | |
-| Clarity | | |
-| **WEIGHTED TOTAL** | **/10** | |
-
-**STRENGTHS:**
-- [Bullet 1]
-- [Bullet 2]
-
-**WEAKNESSES:**
-- [Bullet 1]
-- [Bullet 2]
-
-**OPTIMIZED VERSION OF THIS HOOK:**
-[Complete rewritten hook with all fixes applied]
-
-**VERDICT:** 🔴 Weak / 🟡 Needs Work / 🟢 Good / 🔥 Excellent
-
----
-
-### STEP 2: HOOK COMPARISON MATRIX
-
-After analyzing all hooks, create a side-by-side comparison:
-
-| Criteria | Hook 1 | Hook 2 | Hook 3 | Hook 4 | Hook 5 |
-|----------|--------|--------|--------|--------|--------|
-| Stop Power | /10 | /10 | /10 | /10 | /10 |
-| Curiosity Gap | /10 | /10 | /10 | /10 | /10 |
-| Specificity | /10 | /10 | /10 | /10 | /10 |
-| Emotion Trigger | /10 | /10 | /10 | /10 | /10 |
-| Pattern Interrupt | /10 | /10 | /10 | /10 | /10 |
-| Clarity | /10 | /10 | /10 | /10 | /10 |
-| **TOTAL** | **/10** | **/10** | **/10** | **/10** | **/10** |
-| **RANK** | #? | #? | #? | #? | #? |
-
----
-
-### STEP 3: HOOK RANKING & RECOMMENDATIONS
-
-**🥇 RANK #1: HOOK #[X]**
-- Score: __/10
-- Why it wins: [Explanation]
-
-**🥈 RANK #2: HOOK #[X]**
-- Score: __/10
-- Why it's strong: [Explanation]
-
-**🥉 RANK #3: HOOK #[X]**
-- Score: __/10
-- Potential: [What it does well]
-
-**#4: HOOK #[X]**
-- Score: __/10
-- Issue: [Main problem]
-
-**#5: HOOK #[X]**
-- Score: __/10
-- Issue: [Main problem]
-
----
-
-### STEP 4: ULTIMATE HOOK RECOMMENDATION
-
-**THE WINNER:** Hook #[X]
-
-**WHY:**
-[2-3 sentence explanation]
-
-**HYBRID OPTION (Combining Best Elements):**
-[Create a NEW hybrid hook using best elements from all hooks]
-
----
-
-## PART C: BODY ANALYSIS
-
-Now analyze the BODY of the script (everything after the hooks):
-
-### BODY ELEMENT SCORECARD
-
-| # | Element | Status | What's There | What's Missing/Weak |
-|---|---------|--------|--------------|---------------------|
-| 1 | Stakes Amplifier | ✅⚠️❌ | | |
-| 2 | Credibility Build | ✅⚠️❌ | | |
-| 3 | Shock Stats | ✅⚠️❌ | | |
-| 4 | Direct Quote | ✅⚠️❌ | | |
-| 5 | India Relevance | ✅⚠️❌ | | |
-| 6 | Reframe/Insight | ✅⚠️❌ | | |
-| 7 | CTA | ✅⚠️❌ | | |
-
-**BODY SCORE:** __/7 elements present and strong
-
----
-
-### BODY STYLE SCORECARD
-
-| Element | Status |
-|---------|--------|
-| Short sentences (under 12 words avg) | ✅⚠️❌ |
-| Specific numbers (not rounded) | ✅⚠️❌ |
-| At least 1 direct quote in "quotation marks" | ✅⚠️❌ |
-| 120-150 word count | ✅⚠️❌ |
-| No ALL-CAPS (except acronyms) | ✅⚠️❌ |
-| No spam words | ✅⚠️❌ |
-
-**STYLE SCORE:** __/6
-
----
-
-## PART D: HOOK + BODY COMPATIBILITY CHECK
-
-**BEST HOOK FOR THIS BODY:** Hook #[X]
-
-**WHY THIS PAIRING WORKS:**
-- [Reason 1]
-- [Reason 2]
-
-**FLOW CHECK:**
-Does the winning hook flow naturally into the body?
-- ✅ Yes, seamless transition
-- ⚠️ Needs a bridge sentence: [Suggest bridge]
-- ❌ Disconnect - here's how to fix: [Suggestion]
-
----
-
-## PART E: FINAL DELIVERABLES
-
-### 1. COMPLETE OPTIMIZED SCRIPT
-
-## HOOK OPTIONS
-
-HOOK 1:
-"[Optimized hook 1]"
-
-HOOK 2:
-"[Optimized hook 2]"
-
-HOOK 3:
-"[Optimized hook 3]"
-
-HOOK 4:
-"[Optimized hook 4]"
-
-HOOK 5:
-"[Optimized hook 5]"
-
----
-
-## FINAL SCRIPT
-
-"[WINNING HOOK - optimized version]"
-
-[FULL BODY - with all fixes applied, 120-150 words total]
-
----
-
-### 2. QUICK DECISION SUMMARY
-
-| Hook | Score | Rank | Best For |
-|------|-------|------|----------|
-| Hook 1 | __/10 | #? | [Use case] |
-| Hook 2 | __/10 | #? | [Use case] |
-| Hook 3 | __/10 | #? | [Use case] |
-| Hook 4 | __/10 | #? | [Use case] |
-| Hook 5 | __/10 | #? | [Use case] |
-
-**MY RECOMMENDATION:** Go with Hook #[X] because [reason].
-
----
-
-### 3. FINAL CHECKLIST
-
-| Check | Status |
-|-------|--------|
-| Hook stops the scroll? | ✅/❌ |
-| Starts with person/company name? | ✅/❌ |
-| Has specific number/detail? | ✅/❌ |
-| No spam words? | ✅/❌ |
-| No ALL-CAPS (except acronyms)? | ✅/❌ |
-| Body 120-150 words? | ✅/❌ |
-| Has direct quote? | ✅/❌ |
-| India relevance included? | ✅/❌ |
-| Strong CTA at end? | ✅/❌ |
-
-**READY TO POST?** 🔴 No / 🟡 Almost / 🟢 Yes / 🔥 Ship it!
-
-**CREDIBILITY_SCORE:** [1-10]
-**VIRAL_POTENTIAL:** [Weak / Average / Strong / Viral Ready]
-**BEST_HOOK:** [1-5]
-**HOOK_RANKING:** [comma separated, e.g., 3,1,5,2,4]"""
+| STOP POWER | Would someone stop scrolling in 2 seconds? | 25% |
+| CURIOSITY GAP | Creates "I need to know more" feeling | 20% |
+| SPECIFICITY | Uses specific names, numbers, claims | 15% |
+| EMOTION TRIGGER | Triggers genuine interest (not fake hype) | 15% |
+| CREDIBILITY | Sounds trustworthy, not spammy | 15% |
+| CLARITY | Instantly understandable | 10% |
+
+## FOR EACH HOOK, CHECK:
+
+1. Starts with person/company name? (Required)
+2. Has dramatic action verb? (Required)
+3. Has specific detail/number? (Required)
+4. Word count 10-20? (Required)
+5. Zero ALL-CAPS? (Required)
+6. No banned spam words? (Required)
+7. Sounds factual not hypey? (Required)
+
+## ANALYSIS OUTPUT
+
+For each of the 5 hooks:
+
+HOOK #[X]:
+- Text: "[quote the hook]"
+- Word Count: [X]
+- Starts with Person/Company: YES/NO
+- Has Action Verb: YES/NO
+- Has Specific Detail: YES/NO
+- Spam Check: CLEAN / [list issues]
+- Score: X/10
+- Issues: [list any problems]
+- Improved Version: "[rewritten hook if score < 8]"
+
+## HOOK RANKING
+
+Rank all 5 hooks from best to worst:
+1. Hook #[X] - Score: X/10 - [one-line reason]
+2. Hook #[X] - Score: X/10 - [one-line reason]
+3. Hook #[X] - Score: X/10 - [one-line reason]
+4. Hook #[X] - Score: X/10 - [one-line reason]
+5. Hook #[X] - Score: X/10 - [one-line reason]
+
+BEST HOOK: #[X]
+
+## SCRIPT OPTIMIZATION
+
+If any hooks score below 8/10, provide optimized versions.
+If the final script has issues, provide an optimized version.
+
+## OUTPUT FORMAT
+
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "hook_analysis": [
+    {
+      "hook_number": 1,
+      "text": "...",
+      "word_count": 0,
+      "starts_with_person": true,
+      "has_action_verb": true,
+      "has_specific_detail": true,
+      "spam_check": "CLEAN",
+      "score": 0,
+      "issues": [],
+      "improved_version": null
+    }
+  ],
+  "hook_ranking": [3, 1, 5, 2, 4],
+  "best_hook_number": 3,
+  "optimized_script": null,
+  "viral_potential": "Weak/Average/Strong/Viral Ready",
+  "credibility_score": 0,
+  "retention_checklist": {
+    "first_3_seconds": true,
+    "content_over_creator": true,
+    "retention_triggers": true,
+    "impactful_conclusion": true,
+    "loop_creation": true,
+    "share_save_optimization": true,
+    "engagement_elements": true
+  },
+  "retention_score": 0
+}"""
+
+
+# Retention Checklist for viral content optimization
+RETENTION_CHECKLIST = """
+## VIRAL RETENTION CHECKLIST
+
+### First 3 Seconds
+- [ ] Hook uses split-screen or engaging visual format suggestion
+- [ ] Most exciting/intriguing element at the start
+- [ ] Pattern-interrupting opening
+
+### Content Over Creator
+- [ ] Focuses on value, entertainment, or curiosity
+- [ ] Answers "Why should viewers care?"
+
+### Visual Variety (Suggestions)
+- [ ] Avoids prolonged face-on-camera shots
+- [ ] Suggests quick cuts, B-roll, graphics
+
+### Retention Triggers
+- [ ] Promises value at end
+- [ ] Mid-script hooks present
+- [ ] Step-by-step or numbered elements
+
+### Impactful Conclusion
+- [ ] Last 10-15 seconds highlight why it matters
+- [ ] Practical takeaways for viewers
+
+### Loop Creation
+- [ ] "Follow me" is 5 seconds before end, not at end
+- [ ] Ending transitions smoothly (could loop back to start)
+
+### Share/Save Optimization
+- [ ] Contains shareable/surprising content
+- [ ] Aims for 15+ seconds retention
+- [ ] Includes save-worthy information
+
+### Engagement Elements
+- [ ] Direct questions present
+- [ ] Controversial or relatable topic
+- [ ] Clear call-to-action
+"""
 
 
 class ScriptChecker:
     """
-    Script Checker v5.1 - Multi-Hook Analyzer Edition
-    Analyzes each hook separately, scores them, ranks them, and optimizes the script.
+    Script Checker v8.0 - Hook Optimization Expert
+    Analyzes hooks with proven viral formula and JSON output
     """
 
     def __init__(self):
-        # Use GPT-4o-mini for fast, reliable responses
+        # Use GPT-4o-mini for fast, reliable analysis
         self.llm = ChatOpenAI(
             model="openai/gpt-4o-mini",
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             openai_api_base="https://openrouter.ai/api/v1",
-            temperature=0.3,
-            max_tokens=6000
+            temperature=0.2,
+            max_tokens=4000
         )
 
     def check(self, draft: str, mode: ScriptMode) -> SimpleCheckerResult:
-        """Analyze script with v5.1 Multi-Hook Analyzer framework"""
+        """Analyze and optimize script with v8.0 Hook Optimizer"""
         result = SimpleCheckerResult()
 
         # Pre-check for spam words and caps
@@ -312,65 +215,146 @@ class ScriptChecker:
 
         system_msg = f"""MODE: {mode.value.upper()}
 
-{MULTI_HOOK_ANALYZER_PROMPT}
+{CHECKER_PROMPT}
 
-IMPORTANT: At the very end of your response, include these exact lines for parsing:
-BEST_HOOK: [number 1-5]
-HOOK_RANKING: [comma separated numbers, e.g., 3,1,5,2,4]
-CREDIBILITY_SCORE: [1-10]
-VIRAL_POTENTIAL: [Weak / Average / Strong / Viral Ready]"""
+{RETENTION_CHECKLIST}
+
+PRE-CHECK RESULTS:
+- Spam words found: {result.spam_words_found}
+- Excessive CAPS found: {result.caps_words_found}
+
+If any spam words or excessive caps are found, mark them in issues and provide cleaned versions.
+Return ONLY valid JSON. No markdown code blocks. No explanation text."""
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_msg),
-            ("human", "SCRIPT TO ANALYZE:\n\n{draft}")
+            ("human", "SCRIPT TO ANALYZE AND OPTIMIZE:\n\n{draft}")
         ])
 
         try:
             chain = prompt | self.llm
             response = chain.invoke({"draft": draft})
-            content = response.content
+            content = response.content.strip()
 
-            # Parse the response
-            best_match = re.search(r'BEST_HOOK:\s*(\d+)', content)
-            if best_match:
-                result.best_hook_number = int(best_match.group(1))
+            # Try to parse JSON response
+            json_data = self._extract_json(content)
 
-            rank_match = re.search(r'HOOK_RANKING:\s*([\d,\s]+)', content)
-            if rank_match:
-                ranking_str = rank_match.group(1).strip()
-                result.hook_ranking = [int(x.strip()) for x in ranking_str.split(',') if x.strip().isdigit()]
+            if json_data:
+                # Extract structured data
+                result.hook_analysis = json_data.get("hook_analysis", [])
+                result.hook_ranking = json_data.get("hook_ranking", [1, 2, 3, 4, 5])
+                result.best_hook_number = json_data.get("best_hook_number", 1)
+                result.credibility_score = json_data.get("credibility_score", 0)
+                result.viral_potential = json_data.get("viral_potential", "Average")
+                result.retention_score = json_data.get("retention_score", 0)
 
-            cred_match = re.search(r'CREDIBILITY_SCORE:\s*(\d+)', content)
-            if cred_match:
-                result.credibility_score = int(cred_match.group(1))
-
-            viral_match = re.search(r'VIRAL_POTENTIAL:\s*(.+?)(?:\n|$)', content)
-            if viral_match:
-                result.viral_potential = viral_match.group(1).strip()
-
-            # Extract the analysis (everything before OPTIMIZED SCRIPT)
-            analysis_match = re.search(r'(## PART A:.*?)(?=## HOOK OPTIONS|## FINAL SCRIPT|$)', content, re.DOTALL)
-            if analysis_match:
-                result.analysis = analysis_match.group(1).strip()
-            else:
-                result.analysis = content
-
-            # Extract optimized script
-            opt_match = re.search(r'(## HOOK OPTIONS.*?## FINAL SCRIPT.*?)(?=###|\Z)', content, re.DOTALL)
-            if opt_match:
-                result.optimized_script = opt_match.group(1).strip()
-            else:
-                # Try alternative pattern
-                opt_match2 = re.search(r'## FINAL SCRIPT\s*(.*?)(?=###|---|\Z)', content, re.DOTALL)
-                if opt_match2:
-                    result.optimized_script = opt_match2.group(1).strip()
+                # Build optimized script if provided
+                if json_data.get("optimized_script"):
+                    result.optimized_script = json_data["optimized_script"]
                 else:
                     result.optimized_script = draft
 
+                # Build analysis string from hook_analysis
+                result.analysis = self._build_analysis_string(json_data)
+            else:
+                # Fallback to regex parsing
+                result = self._parse_fallback(content, result, draft)
+
         except Exception as e:
-            print(f"[Checker v5.1 Error] {e}")
+            print(f"[Checker v8.0 Error] {e}")
             result.analysis = f"Analysis skipped due to error: {str(e)[:100]}"
             result.optimized_script = draft
+
+        return result
+
+    def _extract_json(self, content: str) -> Optional[Dict]:
+        """Extract JSON from response content"""
+        # Remove markdown code blocks if present
+        content = re.sub(r'^```json\s*', '', content)
+        content = re.sub(r'^```\s*', '', content)
+        content = re.sub(r'\s*```$', '', content)
+
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            # Try to find JSON object in content
+            json_match = re.search(r'\{[\s\S]*\}', content)
+            if json_match:
+                try:
+                    return json.loads(json_match.group())
+                except json.JSONDecodeError:
+                    pass
+        return None
+
+    def _build_analysis_string(self, json_data: Dict) -> str:
+        """Build human-readable analysis from JSON data"""
+        lines = ["### HOOK ANALYSIS\n"]
+
+        for hook in json_data.get("hook_analysis", []):
+            lines.append(f"**HOOK #{hook.get('hook_number', '?')}:**")
+            lines.append(f"- Text: \"{hook.get('text', 'N/A')[:100]}...\"")
+            lines.append(f"- Word Count: {hook.get('word_count', 'N/A')}")
+            lines.append(f"- Starts with Person/Company: {'YES' if hook.get('starts_with_person') else 'NO'}")
+            lines.append(f"- Has Action Verb: {'YES' if hook.get('has_action_verb') else 'NO'}")
+            lines.append(f"- Has Specific Detail: {'YES' if hook.get('has_specific_detail') else 'NO'}")
+            lines.append(f"- Spam Check: {hook.get('spam_check', 'N/A')}")
+            lines.append(f"- Score: {hook.get('score', 0)}/10")
+
+            issues = hook.get('issues', [])
+            if issues:
+                lines.append(f"- Issues: {', '.join(issues)}")
+
+            improved = hook.get('improved_version')
+            if improved:
+                lines.append(f"- Improved: \"{improved}\"")
+
+            lines.append("")
+
+        # Add ranking
+        ranking = json_data.get("hook_ranking", [])
+        if ranking:
+            lines.append("### HOOK RANKING")
+            for i, hook_num in enumerate(ranking, 1):
+                lines.append(f"{i}. Hook #{hook_num}")
+            lines.append("")
+
+        # Add retention checklist results
+        retention = json_data.get("retention_checklist", {})
+        if retention:
+            lines.append("### RETENTION CHECKLIST")
+            for key, value in retention.items():
+                status = "[x]" if value else "[ ]"
+                formatted_key = key.replace("_", " ").title()
+                lines.append(f"{status} {formatted_key}")
+
+        return "\n".join(lines)
+
+    def _parse_fallback(self, content: str, result: SimpleCheckerResult, draft: str) -> SimpleCheckerResult:
+        """Fallback regex parsing when JSON fails"""
+        # Parse best hook
+        best_match = re.search(r'BEST[_\s]HOOK[:\s#]*(\d+)', content, re.IGNORECASE)
+        if best_match:
+            result.best_hook_number = int(best_match.group(1))
+
+        # Parse hook ranking
+        rank_match = re.search(r'hook_ranking["\s:]+\[([^\]]+)\]', content, re.IGNORECASE)
+        if rank_match:
+            ranking_str = rank_match.group(1)
+            result.hook_ranking = [int(x.strip()) for x in ranking_str.split(',') if x.strip().isdigit()]
+
+        # Parse credibility score
+        cred_match = re.search(r'credibility_score["\s:]+(\d+)', content, re.IGNORECASE)
+        if cred_match:
+            result.credibility_score = int(cred_match.group(1))
+
+        # Parse viral potential
+        viral_match = re.search(r'viral_potential["\s:]+["\']?([^"\'}\n,]+)', content, re.IGNORECASE)
+        if viral_match:
+            result.viral_potential = viral_match.group(1).strip()
+
+        # Set analysis to raw content
+        result.analysis = content[:2000]
+        result.optimized_script = draft
 
         return result
 
@@ -388,9 +372,16 @@ VIRAL_POTENTIAL: [Weak / Average / Strong / Viral Ready]"""
         caps_pattern = r'\b[A-Z]{3,}\b'
         matches = re.findall(caps_pattern, text)
 
-        acceptable = {'AI', 'API', 'CEO', 'CTO', 'INR', 'USD', 'GPT', 'LLM', 'ML',
-                     'AWS', 'GCP', 'IBM', 'GPU', 'CPU', 'RAM', 'SSD', 'NFT', 'VC',
-                     'HOOK', 'CTA', 'PDF', 'URL', 'HTML', 'CSS', 'SQL', 'SDK'}
+        acceptable = {
+            'AI', 'API', 'CEO', 'CTO', 'CFO', 'COO', 'INR', 'USD', 'EUR',
+            'GPT', 'LLM', 'ML', 'NLP', 'AWS', 'GCP', 'IBM', 'GPU', 'CPU',
+            'RAM', 'SSD', 'NFT', 'VC', 'HOOK', 'CTA', 'PDF', 'URL', 'HTML',
+            'CSS', 'SQL', 'SDK', 'iOS', 'OPENAI', 'CHATGPT', 'CLAUDE',
+            'GEMINI', 'LLAMA', 'META', 'GOOGLE', 'MICROSOFT', 'AMAZON',
+            'TESLA', 'NVIDIA', 'AMD', 'INTEL', 'TCS', 'INFOSYS', 'WIPRO',
+            'OPTIONS', 'FINAL', 'SCRIPT', 'ANALYSIS', 'RANKING', 'HUL',
+            'IPL', 'EV', 'EVS', 'CIDCO', 'NMIIA', 'B2B', 'B2C', 'SaaS'
+        }
 
         return [m for m in matches if m not in acceptable]
 
@@ -398,7 +389,7 @@ VIRAL_POTENTIAL: [Weak / Average / Strong / Viral Ready]"""
         """Format the analysis for display"""
         output = []
 
-        output.append("## SCRIPT ANALYSIS v5.1 - Multi-Hook Edition")
+        output.append("## SCRIPT ANALYSIS v8.0")
         output.append("")
 
         output.append("### HOOK RANKING")
@@ -414,26 +405,33 @@ VIRAL_POTENTIAL: [Weak / Average / Strong / Viral Ready]"""
         if result.viral_potential:
             emoji = ""
             if "Weak" in result.viral_potential:
-                emoji = "🔴"
+                emoji = "[LOW]"
             elif "Average" in result.viral_potential:
-                emoji = "🟡"
+                emoji = "[MED]"
             elif "Strong" in result.viral_potential:
-                emoji = "🟢"
+                emoji = "[HIGH]"
             elif "Viral" in result.viral_potential:
-                emoji = "🔥"
+                emoji = "[VIRAL]"
             output.append(f"**Viral Potential:** {emoji} {result.viral_potential}")
+
+        if result.retention_score:
+            output.append(f"**Retention Score:** {result.retention_score}/10")
         output.append("")
 
         if result.spam_words_found or result.caps_words_found:
-            output.append("### SPAM CHECK")
+            output.append("### QUALITY WARNINGS")
             if result.spam_words_found:
-                output.append(f"⚠️ **Spam words:** {', '.join(result.spam_words_found)}")
+                output.append(f"WARNING: Spam words found: {', '.join(result.spam_words_found)}")
             if result.caps_words_found:
-                output.append(f"⚠️ **Excessive CAPS:** {', '.join(result.caps_words_found[:5])}")
+                output.append(f"WARNING: Excessive CAPS: {', '.join(result.caps_words_found[:5])}")
             output.append("")
 
-        if result.analysis:
+        if result.analysis and len(result.analysis) > 50:
             output.append("### DETAILED ANALYSIS")
-            output.append(result.analysis)
+            # Truncate if too long
+            if len(result.analysis) > 1500:
+                output.append(result.analysis[:1500] + "...")
+            else:
+                output.append(result.analysis)
 
         return "\n".join(output)
